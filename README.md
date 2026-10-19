@@ -85,6 +85,21 @@ Release 构建，whisper-base int8，NPU 编码器：
 长音频按能量在静音处切分为不超过 30 s 的片段，SRT 时间轴与输入对齐；
 `--encoder-device` 在 NPU 不可用时可改为 `GPU` 或 `CPU`。
 
+## 打包
+
+```powershell
+.\scripts\package.ps1                 # 构建 Release 并打包
+.\scripts\package.ps1 -VerifyDevices  # 额外验证 OpenVINO 设备加载
+```
+
+产物：`build/dist/nput-transcribe-v<版本>-windows-x64.zip`，包含 exe、OpenVINO
+运行时 DLL、MIT 许可、第三方声明、Apache-2.0 全文与 `SHA256SUMS.txt`。
+发布时上传：
+
+```powershell
+gh release upload <tag> build/dist/<zip>
+```
+
 ## 作为库使用
 
 ```cmake
@@ -120,7 +135,8 @@ cmake --install build/release --prefix C:\libs\nput-transcribe
 ```text
 include/nput/  公共头文件          src/nput/  实现
 src/main.c     CLI                 tests/     Unity 单元测试
-cmake/         构建模块            scripts/   构建与语料脚本
+cmake/         构建模块            scripts/   构建、打包与语料脚本
+LICENSES/      第三方许可全文
 ```
 
 ## 已知限制

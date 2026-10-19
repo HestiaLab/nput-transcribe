@@ -5,7 +5,11 @@
 
 ## [Unreleased]
 
-暂无。
+### 新增
+
+- 打包：`scripts/package.ps1` 生成 Windows 便携包（exe、OpenVINO DLL、许可证、
+  第三方声明与 `SHA256SUMS.txt`）；新增 `THIRD_PARTY_NOTICES.md` 与
+  `LICENSES/Apache-2.0.txt`。
 
 ## [0.1.0] - 2026-10-19
 
