@@ -1,0 +1,10 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+# 复用构建时的 OpenVINO 查找逻辑，定义 nput_openvino 导入目标。
+include("${CMAKE_CURRENT_LIST_DIR}/OpenVINO.cmake")
+
+include("${CMAKE_CURRENT_LIST_DIR}/NpuTranscribeTargets.cmake")
+
+check_required_components(NpuTranscribe)

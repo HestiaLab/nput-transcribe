@@ -1,0 +1,182 @@
+{
+    // 调试会话通过 gdb 运行 debug 预设（GCC + Ninja）的产物；Release 不含调试信息。
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "CLI: NPU encoder (Debug)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}\\build\\debug\\bin\\nput-transcribe.exe",
+            "args": [
+                "--model",
+                "${input:modelDir}",
+                "--cache-dir",
+                "${env:USERPROFILE}\\.cache\\ov_whisper",
+                "-l",
+                "auto",
+                "-v",
+                "${input:audioFile}"
+            ],
+            "cwd": "${workspaceFolder}",
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "C:/msys64/ucrt64/bin/gdb.exe",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "stopAtEntry": false,
+            "preLaunchTask": "CMake: Build Debug"
+        },
+        {
+            "name": "CLI: CPU only (Debug)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}\\build\\debug\\bin\\nput-transcribe.exe",
+            "args": [
+                "--model",
+                "${input:modelDir}",
+                "--cache-dir",
+                "${env:USERPROFILE}\\.cache\\ov_whisper",
+                "--encoder-device",
+                "CPU",
+                "--decoder-device",
+                "CPU",
+                "-l",
+                "auto",
+                "-v",
+                "${input:audioFile}"
+            ],
+            "cwd": "${workspaceFolder}",
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "C:/msys64/ucrt64/bin/gdb.exe",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "stopAtEntry": false,
+            "preLaunchTask": "CMake: Build Debug"
+        },
+        {
+            "name": "CLI: SRT output (Debug)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}\\build\\debug\\bin\\nput-transcribe.exe",
+            "args": [
+                "--model",
+                "${input:modelDir}",
+                "--cache-dir",
+                "${env:USERPROFILE}\\.cache\\ov_whisper",
+                "-f",
+                "srt",
+                "-v",
+                "-o",
+                "${env:TEMP}\\nput-debug.srt",
+                "${input:audioFile}"
+            ],
+            "cwd": "${workspaceFolder}",
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "C:/msys64/ucrt64/bin/gdb.exe",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "stopAtEntry": false,
+            "preLaunchTask": "CMake: Build Debug"
+        },
+        {
+            "name": "CLI: --help (Debug)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}\\build\\debug\\bin\\nput-transcribe.exe",
+            "args": [
+                "--help"
+            ],
+            "cwd": "${workspaceFolder}",
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "C:/msys64/ucrt64/bin/gdb.exe",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "stopAtEntry": false,
+            "preLaunchTask": "CMake: Build Debug"
+        },
+        {
+            "name": "Test: Unity binary",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}\\build\\debug\\bin\\${input:testBinary}",
+            "args": [],
+            "cwd": "${workspaceFolder}\\build\\debug",
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "C:/msys64/ucrt64/bin/gdb.exe",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "stopAtEntry": false,
+            "preLaunchTask": "CMake: Build Debug"
+        },
+        {
+            // 长音频在调试器下会被明显拖慢；建议在终端启动后用这里附加。
+            "name": "Attach: running nput-transcribe",
+            "type": "cppdbg",
+            "request": "attach",
+            "program": "${workspaceFolder}\\build\\debug\\bin\\nput-transcribe.exe",
+            "processId": "${command:pickProcess}",
+            "MIMode": "gdb",
+            "miDebuggerPath": "C:/msys64/ucrt64/bin/gdb.exe"
+        }
+    ],
+    "inputs": [
+        {
+            "id": "modelDir",
+            "type": "promptString",
+            "description": "Whisper OpenVINO IR 目录（包含 openvino_encoder_model.xml）"
+        },
+        {
+            "id": "audioFile",
+            "type": "promptString",
+            "description": "要转写的音频文件"
+        },
+        {
+            "id": "mediaDir",
+            "type": "promptString",
+            "description": "语料目录（run-corpus 使用）"
+        },
+        {
+            "id": "testBinary",
+            "type": "pickString",
+            "description": "Unity test executable",
+            "options": [
+                "nput_wav_tests.exe",
+                "nput_resample_tests.exe",
+                "nput_mel_tests.exe",
+                "nput_tokenizer_tests.exe",
+                "nput_segment_tests.exe",
+                "nput_decode_guard_tests.exe"
+            ],
+            "default": "nput_mel_tests.exe"
+        }
+    ]
+}

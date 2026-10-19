@@ -1,0 +1,26 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "local-debug",
+      "displayName": "Local Debug (GCC, Ninja)",
+      "inherits": "debug",
+      "binaryDir": "${sourceDir}/build/local/debug"
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "local-debug",
+      "configurePreset": "local-debug"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "local-debug",
+      "configurePreset": "local-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

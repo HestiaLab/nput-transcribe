@@ -1,0 +1,123 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "CMake: Configure Debug",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--preset",
+                "debug"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "detail": "配置 debug 预设（GCC + Ninja）。"
+        },
+        {
+            "label": "CMake: Configure Release",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--preset",
+                "release"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "detail": "配置 release 预设（GCC + Ninja）。"
+        },
+        {
+            "label": "CMake: Build Debug",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "--preset",
+                "debug"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "dependsOn": "CMake: Configure Debug",
+            "problemMatcher": [],
+            "detail": "构建 debug 预设（GCC + Ninja）。"
+        },
+        {
+            "label": "CMake: Build Release",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "--preset",
+                "release"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "dependsOn": "CMake: Configure Release",
+            "problemMatcher": [],
+            "detail": "构建 release 预设（GCC + Ninja）。"
+        },
+        {
+            "label": "CTest: Debug",
+            "type": "shell",
+            "command": "ctest",
+            "args": [
+                "--preset",
+                "debug"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "dependsOn": "CMake: Build Debug",
+            "problemMatcher": [],
+            "detail": "运行 debug 预设的测试。"
+        },
+        {
+            "label": "test: corpus",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                "${workspaceFolder}\\scripts\\run-corpus.ps1",
+                "-Model",
+                "${input:modelDir}",
+                "-Media",
+                "${input:mediaDir}",
+                "-Out",
+                "${workspaceFolder}\\out"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "test"
+        }
+    ],
+    "inputs": [
+        {
+            "id": "modelDir",
+            "type": "promptString",
+            "description": "Whisper OpenVINO IR 目录（包含 openvino_encoder_model.xml）"
+        },
+        {
+            "id": "mediaDir",
+            "type": "promptString",
+            "description": "语料目录"
+        }
+    ]
+}

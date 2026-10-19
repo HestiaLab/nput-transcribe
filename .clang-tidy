@@ -1,0 +1,18 @@
+# C's malloc/realloc/free intentionally convert between object pointers and
+# void *, so disable the C++-oriented checks that flag that pattern.
+Checks: >
+  clang-diagnostic-*,
+  clang-analyzer-*,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+  bugprone-*,
+  performance-*,
+  portability-*,
+  misc-*,
+  -misc-include-cleaner,
+  -misc-no-recursion,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-multi-level-implicit-pointer-conversion,
+  -readability-*
+WarningsAsErrors: ''
+HeaderFilterRegex: '^(include|src|tests/(?!vendor)).*'
+FormatStyle: file

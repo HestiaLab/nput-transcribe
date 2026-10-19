@@ -1,0 +1,7 @@
+{
+    // 生成器与构建目录由预设决定，因此不再使用 kit。
+    "cmake.useCMakePresets": "always",
+    "cmake.configureOnOpen": true,
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/build/debug/compile_commands.json",
+    "C_Cpp.default.cStandard": "c11"
+}
