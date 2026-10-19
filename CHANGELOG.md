@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+暂无。
+
+## [0.1.1] - 2026-10-19
+
 ### 新增
 
 - 打包：`scripts/package.ps1` 生成 Windows 便携包（exe、OpenVINO DLL、许可证、
