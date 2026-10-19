@@ -5,14 +5,7 @@
 
 ## [Unreleased]
 
-### 新增
-
-- `-o` 指定的输出路径会自动创建不存在的父目录。
-- `--model` 可省略：按 `NPUT_MODEL_DIR` → `./models` → Hugging Face 缓存自动查找，
-  多个候选取最新快照，并打印实际使用的目录。
-- 新增 `--list-models`：列出自动查找可用的模型目录（含 `NPUT_MODEL_DIR`）。
-- 安装与包支持：`cmake --install` 后可用 `find_package(NpuTranscribe)` 并链接
-  `NpuTranscribe::nput_core`；支持 `BUILD_SHARED_LIBS` 构建共享库与 `NPUT_API` 导出宏。
+暂无。
 
 ## [0.1.0] - 2026-10-19
 
@@ -25,8 +18,13 @@
   Windows 上通过 Media Foundation 解码 MP3/M4A/FLAC/WMA。
 - 处理链：重采样到 16 kHz → 30 秒分段（静音处切分）→ log-mel（与 transformers
   `WhisperFeatureExtractor` 数值一致）→ 贪心解码（3-gram 去重）。
-- CLI：`txt`/`srt`/`json` 输出，语言自动检测或指定，`--list-devices`、
-  `--cache-dir` 编译缓存、`--verbose` 分段耗时。
+- 模型目录：`--model` 可省略，按 `NPUT_MODEL_DIR` → `./models` → Hugging Face 缓存
+  自动查找，多个候选取最新快照，并在 stderr 打印实际使用的目录。
+- CLI：`txt`/`srt`/`json` 输出，语言自动检测或指定，`--list-devices`、`--list-models`、
+  `--cache-dir` 编译缓存、`--verbose` 分段耗时；`-o` 自动创建父目录。
+- 库接口：C11 公共 API（`include/nput`）；`cmake --install` 后可用
+  `find_package(NpuTranscribe)` 链接 `NpuTranscribe::nput_core`，支持
+  `BUILD_SHARED_LIBS` 共享库与 `NPUT_API` 导出宏。
 - 构建：CMake Presets（`debug` / `release`）+ Ninja + GCC；自动定位 OpenVINO
   运行时并复制 DLL。
 - 开发环境：VS Code 预设构建与 gdb 调试配置，`scripts/build.ps1`、
