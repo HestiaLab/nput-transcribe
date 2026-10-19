@@ -131,6 +131,10 @@ cmake/         构建模块            scripts/   构建与语料脚本
 - 音频整体载入内存：1 小时 44.1 kHz 立体声峰值约 1 GB。
 - 非 Windows 平台只能处理 WAV；Media Foundation 固定要求 16 位 PCM。
 
+## 许可证
+
+MIT，详见 [LICENSE](LICENSE)。
+
 ---
 
 贡献规范见 [CONTRIBUTING.md](CONTRIBUTING.md)，安全问题按 [SECURITY.md](SECURITY.md) 报告，
