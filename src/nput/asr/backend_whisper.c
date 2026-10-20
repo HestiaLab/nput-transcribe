@@ -21,7 +21,6 @@ enum {
     NPUT_ASR_TRANSCRIBE = 50359,
     NPUT_ASR_NO_TIMESTAMPS = 50363,
     NPUT_ASR_END_OF_TEXT = NPUT_TOKENIZER_SPECIAL_FIRST,
-    WHISPER_HIDDEN_SIZE = 512,
     /* 编码器卷积步长为 2；由 mel 帧数推导，不重复 1500 这个事实。 */
     WHISPER_ENCODER_FRAMES = NPUT_MEL_FRAMES / 2,
     NPUT_ASR_PATH_MAX = 1024
@@ -277,9 +276,11 @@ static nput_status run_encoder(struct whisper_backend *asr, const nput_mel *mel,
         ov_tensor_free(hidden);
         return NPUT_ERR_RUNTIME;
     }
-    const int shape_ok =
-        hidden_shape.rank == 3 && hidden_shape.dims[1] == WHISPER_ENCODER_FRAMES &&
-        hidden_shape.dims[2] == WHISPER_HIDDEN_SIZE;
+    /* d_model 随模型规模变化（base 512 / small 768 / medium 1024），这里只校验
+       编码器输出形状的前两维，隐藏维交给解码器消费。 */
+    const int shape_ok = hidden_shape.rank == 3 &&
+                         hidden_shape.dims[1] == WHISPER_ENCODER_FRAMES &&
+                         hidden_shape.dims[2] > 0;
     ov_shape_free(&hidden_shape);
     if (!shape_ok) {
         ov_tensor_free(hidden);

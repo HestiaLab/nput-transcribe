@@ -17,6 +17,13 @@ ctest --preset debug
 .\build\debug\bin\nput-transcribe.exe -m <模型目录> -v <音频文件>
 ```
 
+## 调试
+
+- CLI 的 VS Code 调试配置使用 CodeLLDB（扩展 `vadimcn.vscode-lldb`）。
+  Windows 下 gdb 通过 MI 传参时按 ANSI 代码页编码，非 ASCII 路径会变成乱码；
+  lldb 保留 Unicode 参数，可直接调试中文路径的模型与音频。
+- Unity 测试与附加进程仍使用 gdb；首次调试前安装工作区推荐扩展。
+
 ## 改动流程
 
 1. 先写验收：说明要改变的行为，以及验证用的命令与预期结果。
@@ -26,7 +33,7 @@ ctest --preset debug
 
 ## 新增 ASR 后端
 
-1. 在 `src/nput/backend_<名称>.c` 中实现 `nput_asr_backend` 的五个成员：
+1. 在 `src/nput/asr/backend_<名称>.c` 中实现 `nput_asr_backend` 的五个成员：
    - `create` 不得保存 `nput_asr_options` 中的字符串指针；
    - `transcribe` 分配文本并填充 `nput_asr_timings`；
    - `detect_language` 不更新 `nput_asr_last_timings`；

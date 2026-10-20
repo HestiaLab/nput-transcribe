@@ -3,6 +3,13 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 变更
+
+- Whisper 后端不再固定 `d_model=512`：支持 `whisper-small`（768）与 `whisper-medium`（1024）；
+  `large-v3` 需要 128 维 mel 输入，暂不支持。
+
 ## [0.3.0] - 2026-10-20
 
 ### 新增

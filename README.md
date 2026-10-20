@@ -36,6 +36,10 @@ OpenVINO 运行时按 `OPENVINO_ROOT` → 环境变量 → `pip install openvino
 与 `vocab.json`。不传 `--model` 时按 `NPUT_MODEL_DIR` → `./models` → Hugging Face 缓存
 的顺序查找，多个候选取最新快照，并在 stderr 打印实际使用的目录。
 
+支持的模型规模：`base`（d_model 512）、`small`（768）、`medium`（1024）使用相同的
+80 维 mel 输入；`large-v3` 需要 128 维 mel，当前实现不支持。音乐、演唱与强伴奏场景
+建议至少使用 `medium`，或先做人声分离。
+
 ## 常用命令
 
 | 目的 | 命令 |

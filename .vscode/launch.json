@@ -1,10 +1,12 @@
 {
-    // 调试会话通过 gdb 运行 debug 预设（GCC + Ninja）的产物；Release 不含调试信息。
+    // CLI 调试使用 CodeLLDB（lldb）：Windows 下它会保留 Unicode 参数；
+    // gdb 的 MI -exec-arguments 按 ANSI 代码页编码，非 ASCII 路径会变成乱码。
+    // Unity 测试与附加进程仍使用 gdb。
     "version": "0.2.0",
     "configurations": [
         {
             "name": "CLI: NPU encoder (Debug)",
-            "type": "cppdbg",
+            "type": "lldb",
             "request": "launch",
             "program": "${workspaceFolder}\\build\\debug\\bin\\nput-transcribe.exe",
             "args": [
@@ -18,26 +20,14 @@
                 "${input:audioFile}"
             ],
             "cwd": "${workspaceFolder}",
-            "externalConsole": false,
-            "MIMode": "gdb",
-            "miDebuggerPath": "C:/msys64/ucrt64/bin/gdb.exe",
-            "setupCommands": [
-                {
-                    "description": "Enable pretty-printing for gdb",
-                    "text": "-enable-pretty-printing",
-                    "ignoreFailures": true
-                },
-                {
-                    "description": "OpenVINO 编译模型时会触发由 SEH 处理的首次访问违例；交给程序处理，避免 gdb 误报 SIGSEGV",
-                    "text": "handle SIGSEGV nostop noprint pass"
-                }
-            ],
-            "stopAtEntry": false,
+            "terminal": "console",
+            "sourceLanguages": ["c"],
+            "stopOnEntry": false,
             "preLaunchTask": "CMake: Build Debug"
         },
         {
             "name": "CLI: CPU only (Debug)",
-            "type": "cppdbg",
+            "type": "lldb",
             "request": "launch",
             "program": "${workspaceFolder}\\build\\debug\\bin\\nput-transcribe.exe",
             "args": [
@@ -55,26 +45,14 @@
                 "${input:audioFile}"
             ],
             "cwd": "${workspaceFolder}",
-            "externalConsole": false,
-            "MIMode": "gdb",
-            "miDebuggerPath": "C:/msys64/ucrt64/bin/gdb.exe",
-            "setupCommands": [
-                {
-                    "description": "Enable pretty-printing for gdb",
-                    "text": "-enable-pretty-printing",
-                    "ignoreFailures": true
-                },
-                {
-                    "description": "OpenVINO 编译模型时会触发由 SEH 处理的首次访问违例；交给程序处理，避免 gdb 误报 SIGSEGV",
-                    "text": "handle SIGSEGV nostop noprint pass"
-                }
-            ],
-            "stopAtEntry": false,
+            "terminal": "console",
+            "sourceLanguages": ["c"],
+            "stopOnEntry": false,
             "preLaunchTask": "CMake: Build Debug"
         },
         {
             "name": "CLI: SRT output (Debug)",
-            "type": "cppdbg",
+            "type": "lldb",
             "request": "launch",
             "program": "${workspaceFolder}\\build\\debug\\bin\\nput-transcribe.exe",
             "args": [
@@ -90,43 +68,37 @@
                 "${input:audioFile}"
             ],
             "cwd": "${workspaceFolder}",
-            "externalConsole": false,
-            "MIMode": "gdb",
-            "miDebuggerPath": "C:/msys64/ucrt64/bin/gdb.exe",
-            "setupCommands": [
-                {
-                    "description": "Enable pretty-printing for gdb",
-                    "text": "-enable-pretty-printing",
-                    "ignoreFailures": true
-                },
-                {
-                    "description": "OpenVINO 编译模型时会触发由 SEH 处理的首次访问违例；交给程序处理，避免 gdb 误报 SIGSEGV",
-                    "text": "handle SIGSEGV nostop noprint pass"
-                }
-            ],
-            "stopAtEntry": false,
+            "terminal": "console",
+            "sourceLanguages": ["c"],
+            "stopOnEntry": false,
             "preLaunchTask": "CMake: Build Debug"
         },
         {
             "name": "CLI: --help (Debug)",
-            "type": "cppdbg",
+            "type": "lldb",
             "request": "launch",
             "program": "${workspaceFolder}\\build\\debug\\bin\\nput-transcribe.exe",
             "args": [
                 "--help"
             ],
             "cwd": "${workspaceFolder}",
-            "externalConsole": false,
-            "MIMode": "gdb",
-            "miDebuggerPath": "C:/msys64/ucrt64/bin/gdb.exe",
-            "setupCommands": [
-                {
-                    "description": "Enable pretty-printing for gdb",
-                    "text": "-enable-pretty-printing",
-                    "ignoreFailures": true
-                }
+            "terminal": "console",
+            "sourceLanguages": ["c"],
+            "stopOnEntry": false,
+            "preLaunchTask": "CMake: Build Debug"
+        },
+        {
+            "name": "CLI: --list-models (Debug)",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}\\build\\debug\\bin\\nput-transcribe.exe",
+            "args": [
+                "--list-models"
             ],
-            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "terminal": "console",
+            "sourceLanguages": ["c"],
+            "stopOnEntry": false,
             "preLaunchTask": "CMake: Build Debug"
         },
         {
