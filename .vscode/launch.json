@@ -20,7 +20,7 @@
                 "${input:audioFile}"
             ],
             "cwd": "${workspaceFolder}",
-            "terminal": "console",
+            "terminal": "integrated",
             "sourceLanguages": ["c"],
             "stopOnEntry": false,
             "preLaunchTask": "CMake: Build Debug"
@@ -45,7 +45,7 @@
                 "${input:audioFile}"
             ],
             "cwd": "${workspaceFolder}",
-            "terminal": "console",
+            "terminal": "integrated",
             "sourceLanguages": ["c"],
             "stopOnEntry": false,
             "preLaunchTask": "CMake: Build Debug"
@@ -68,7 +68,7 @@
                 "${input:audioFile}"
             ],
             "cwd": "${workspaceFolder}",
-            "terminal": "console",
+            "terminal": "integrated",
             "sourceLanguages": ["c"],
             "stopOnEntry": false,
             "preLaunchTask": "CMake: Build Debug"
@@ -82,7 +82,7 @@
                 "--help"
             ],
             "cwd": "${workspaceFolder}",
-            "terminal": "console",
+            "terminal": "integrated",
             "sourceLanguages": ["c"],
             "stopOnEntry": false,
             "preLaunchTask": "CMake: Build Debug"
@@ -96,7 +96,30 @@
                 "--list-models"
             ],
             "cwd": "${workspaceFolder}",
-            "terminal": "console",
+            "terminal": "integrated",
+            "sourceLanguages": ["c"],
+            "stopOnEntry": false,
+            "preLaunchTask": "CMake: Build Debug"
+        },
+        {
+            "name": "CLI: SRT output (Debug, external console)",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}\\build\\debug\\bin\\nput-transcribe.exe",
+            "args": [
+                "--model",
+                "${input:modelDir}",
+                "--cache-dir",
+                "${env:USERPROFILE}\\.cache\\ov_whisper",
+                "-f",
+                "srt",
+                "-v",
+                "-o",
+                "${env:TEMP}\\nput-debug.srt",
+                "${input:audioFile}"
+            ],
+            "cwd": "${workspaceFolder}",
+            "terminal": "external",
             "sourceLanguages": ["c"],
             "stopOnEntry": false,
             "preLaunchTask": "CMake: Build Debug"
@@ -129,7 +152,13 @@
             "program": "${workspaceFolder}\\build\\debug\\bin\\nput-transcribe.exe",
             "processId": "${command:pickProcess}",
             "MIMode": "gdb",
-            "miDebuggerPath": "C:/msys64/ucrt64/bin/gdb.exe"
+            "miDebuggerPath": "C:/msys64/ucrt64/bin/gdb.exe",
+            "setupCommands": [
+                {
+                    "description": "OpenVINO 编译模型时会触发由 SEH 处理的首次访问违例；交给程序处理，避免 gdb 误报 SIGSEGV",
+                    "text": "handle SIGSEGV nostop noprint pass"
+                }
+            ]
         }
     ],
     "inputs": [

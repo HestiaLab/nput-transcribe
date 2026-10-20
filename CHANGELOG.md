@@ -5,6 +5,11 @@
 
 ## [Unreleased]
 
+### 修复
+
+- Media Foundation 解码低采样率 AAC（16 kHz、22.05 kHz）时被标成 2 倍采样率的立体声，
+  音频被拉伸为 1/4 时长；现在沿用源流的采样率与声道数。
+
 ### 变更
 
 - Whisper 后端不再固定 `d_model=512`：支持 `whisper-small`（768）与 `whisper-medium`（1024）；

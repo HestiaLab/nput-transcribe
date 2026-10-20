@@ -78,6 +78,30 @@ nput_status nput_platform_decode(const char *path, nput_audio *out) {
         status = NPUT_ERR_RUNTIME;
         goto done;
     }
+    /* 必须沿用源流的采样率与声道数：只请求 PCM 时，AAC 解码器会把 16/22.05 kHz
+       单声道输出标成 2 倍采样率的立体声，导致音频被拉伸成 1/4 时长。 */
+    {
+        IMFMediaType *native_type = NULL;
+        if (SUCCEEDED(reader->lpVtbl->GetNativeMediaType(
+                reader, (DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, 0, &native_type))) {
+            UINT32 native_rate = 0;
+            UINT32 native_channels = 0;
+            if (SUCCEEDED(native_type->lpVtbl->GetUINT32(native_type,
+                                                         &MF_MT_AUDIO_SAMPLES_PER_SECOND,
+                                                         &native_rate)) &&
+                native_rate > 0) {
+                output_type->lpVtbl->SetUINT32(output_type, &MF_MT_AUDIO_SAMPLES_PER_SECOND,
+                                               native_rate);
+            }
+            if (SUCCEEDED(native_type->lpVtbl->GetUINT32(native_type, &MF_MT_AUDIO_NUM_CHANNELS,
+                                                         &native_channels)) &&
+                native_channels > 0) {
+                output_type->lpVtbl->SetUINT32(output_type, &MF_MT_AUDIO_NUM_CHANNELS,
+                                               native_channels);
+            }
+            native_type->lpVtbl->Release(native_type);
+        }
+    }
     if (FAILED(reader->lpVtbl->SetCurrentMediaType(reader, (DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, NULL,
                                                   output_type))) {
         status = NPUT_ERR_UNSUPPORTED;

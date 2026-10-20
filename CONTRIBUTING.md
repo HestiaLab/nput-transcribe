@@ -23,6 +23,12 @@ ctest --preset debug
   Windows 下 gdb 通过 MI 传参时按 ANSI 代码页编码，非 ASCII 路径会变成乱码；
   lldb 保留 Unicode 参数，可直接调试中文路径的模型与音频。
 - Unity 测试与附加进程仍使用 gdb；首次调试前安装工作区推荐扩展。
+- 进度输出走 stderr。若所选终端看不到输出，改用
+  `CLI: SRT output (Debug, external console)`（外部控制台窗口）。
+- `whisper-medium` 处理 4 分钟音频约 35 s；在调试器下约 70–85 s，
+  其中模型编译与解码占主要时间，长时间无输出属于正常现象。
+- 更稳妥的调试方式：先在终端运行 CLI 观察输出，再用
+  `Attach: running nput-transcribe` 附加；这样字符集与输出都不受调试器影响。
 
 ## 改动流程
 

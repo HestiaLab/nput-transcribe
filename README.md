@@ -4,7 +4,8 @@
 
 Whisper 语音转写命令行工具（C11）：**编码器跑在 Intel NPU，解码器留在 CPU**。
 ASR 层按模型后端组织，Whisper 是当前默认后端。
-输入 WAV，以及系统解码器支持的压缩音频（Windows：MP3/M4A/FLAC/WMA）。
+输入 WAV，以及系统解码器支持的压缩音频（Windows：MP3、M4A/AAC、FLAC、WMA，以及
+带音轨的 MP4/MOV 等容器）。
 
 ```text
 nput-transcribe --model <whisper-ir-dir> -f srt -o meeting.srt meeting.mp3
