@@ -1,3 +1,7 @@
+#if !defined(_WIN32) && !defined(_XOPEN_SOURCE)
+#define _XOPEN_SOURCE 700
+#endif
+
 #include "nput/internal.h"
 
 #include <stdlib.h>
@@ -313,6 +317,7 @@ nput_status nput_list_model_dirs(char **out_lines) {
 #include <dirent.h>
 #include <errno.h>
 #include <sys/stat.h>
+#include <time.h>
 
 FILE *nput_file_open(const char *utf8_path, const char *mode) {
     return fopen(utf8_path, mode);

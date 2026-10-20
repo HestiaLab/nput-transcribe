@@ -5,7 +5,16 @@
 
 ## [Unreleased]
 
-暂无。
+### 新增
+
+- GitHub Actions CI：Windows（MinGW GCC）与 Linux（GCC、Clang、Debug + ASan）构建并运行 `ctest`。
+- 标签触发的 Release 工作流：构建、测试、打包 Windows x64 产物并创建 GitHub Release。
+
+### 修复
+
+- Linux 构建：`platform.c` 与 `wav.c` 声明 POSIX 特性宏，修复 `time_t`、`mkdir`、
+  `fseeko` 等符号不可见的问题。
+- `cmake/OpenVINO.cmake` 支持 Linux wheel 中带版本号的 `libopenvino_c.so`。
 
 ## [0.2.0] - 2026-10-20
 

@@ -1,5 +1,7 @@
 # nput-transcribe
 
+[![CI](https://github.com/HestiaLab/nput-transcribe/actions/workflows/ci.yml/badge.svg)](https://github.com/HestiaLab/nput-transcribe/actions/workflows/ci.yml)
+
 Whisper 语音转写命令行工具（C11）：**编码器跑在 Intel NPU，解码器留在 CPU**。
 ASR 层按模型后端组织，Whisper 是当前默认后端。
 输入 WAV，以及系统解码器支持的压缩音频（Windows：MP3/M4A/FLAC/WMA）。
@@ -119,7 +121,8 @@ Release 构建，whisper-base int8，NPU 编码器：
 
 产物：`build/dist/nput-transcribe-v<版本>-windows-x64.zip`，包含 exe、OpenVINO
 运行时 DLL、MIT 许可、第三方声明、Apache-2.0 全文与 `SHA256SUMS.txt`。
-发布时上传：
+推送 `v<版本>` 标签会触发 `.github/workflows/release.yml`：在 Windows 上构建、跑
+`ctest`、校验标签与项目版本一致，然后打包并创建 GitHub Release。手动上传：
 
 ```powershell
 gh release upload <tag> build/dist/<zip>

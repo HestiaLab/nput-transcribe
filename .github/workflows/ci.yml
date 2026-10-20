@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # 与本地验证一致；升级前先在 Windows 与 Linux 上跑通 ctest。
+  OPENVINO_VERSION: "2026.4.1"
+  # 非 ASan 二进制会忽略该变量。
+  ASAN_OPTIONS: detect_leaks=1
+
+jobs:
+  windows:
+    name: Windows x64 (MinGW GCC, Release)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install OpenVINO runtime
+        shell: bash
+        run: |
+          python -m pip install --disable-pip-version-check "openvino==${OPENVINO_VERSION}"
+          echo "OPENVINO_ROOT=$(python -c 'import openvino, os; print(os.path.dirname(openvino.__file__))')" >> "$GITHUB_ENV"
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+
+      - name: Configure
+        shell: msys2 {0}
+        run: >-
+          cmake -S . -B build/ci -G Ninja
+          -DCMAKE_C_COMPILER=gcc
+          -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        shell: msys2 {0}
+        run: cmake --build build/ci
+
+      - name: Test
+        shell: msys2 {0}
+        run: ctest --test-dir build/ci --output-on-failure
+
+  linux:
+    name: Linux x64 (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: GCC, Release
+            cc: gcc
+            build_type: Release
+          - name: Clang, Release
+            cc: clang
+            build_type: Release
+          - name: GCC, Debug + ASan
+            cc: gcc
+            build_type: Debug
+            asan: ON
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install OpenVINO runtime
+        run: |
+          python -m pip install --disable-pip-version-check "openvino==${OPENVINO_VERSION}"
+          echo "OPENVINO_ROOT=$(python -c 'import openvino, os; print(os.path.dirname(openvino.__file__))')" >> "$GITHUB_ENV"
+
+      - name: Install Ninja and Clang
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+          if [ "${{ matrix.cc }}" = "clang" ]; then
+            sudo apt-get install -y clang
+          fi
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build/ci -G Ninja
+          -DCMAKE_C_COMPILER=${{ matrix.cc }}
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DNPUT_ENABLE_ASAN=${{ matrix.asan || 'OFF' }}
+
+      - name: Build
+        run: cmake --build build/ci
+
+      - name: Test
+        run: ctest --test-dir build/ci --output-on-failure

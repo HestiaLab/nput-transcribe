@@ -61,6 +61,7 @@ feat/<主题>    fix/<主题>    docs/<主题>
 ## Pull Request
 
 - [ ] 说明目标与验收命令，附实际输出。
+- [ ] GitHub Actions 的 CI 通过（Windows MinGW GCC、Linux GCC / Clang、ASan）。
 - [ ] `ctest --preset debug` 全部通过；改推理路径时附真实音频的 `-v` 结果。
 - [ ] 公开接口只放在 `include/nput/`，实现细节留在 `src/`。
 - [ ] 设备相关的 `#ifdef` 收敛在 `src/nput/platform.c` 与 `src/nput/media_foundation.c`。
