@@ -365,23 +365,17 @@ static nput_status transcribe_file(nput_asr *asr, const cli_options *options, co
     for (size_t i = 0; i < segment_count && result->segments != NULL; ++i) {
         const size_t begin = segments[i].begin;
         const size_t count = segments[i].end - segments[i].begin;
-        nput_mel mel;
-        status = nput_mel_compute(audio.samples + begin, count, &mel);
-        if (status != NPUT_OK) {
-            break;
-        }
         int32_t language = *language_token;
         if (language < 0) {
-            status = nput_asr_detect_language(asr, &mel, &language);
+            status = nput_asr_detect_language(asr, audio.samples + begin, count, &language);
             if (status == NPUT_OK) {
                 *language_token = language;
             }
         }
         char *text = NULL;
         if (status == NPUT_OK) {
-            status = nput_asr_transcribe(asr, &mel, language, &text);
+            status = nput_asr_transcribe(asr, audio.samples + begin, count, language, &text);
         }
-        nput_mel_free(&mel);
         if (status != NPUT_OK) {
             break;
         }

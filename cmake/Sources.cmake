@@ -12,6 +12,7 @@ set(NPUT_CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/nput/segment.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/nput/ov_runtime.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/nput/asr.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/nput/backend_whisper.c
 )
 
 set(NPUT_CLI_SOURCES

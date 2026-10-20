@@ -1,6 +1,7 @@
 #include "nput/tokenizer.h"
 
 #include "nput/internal.h"
+#include "nput/tokenizer_internal.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -323,8 +324,8 @@ void nput_tokenizer_free(nput_tokenizer *tokenizer) {
     free(tokenizer);
 }
 
-nput_status nput_tokenizer_decode(const nput_tokenizer *tokenizer, const int64_t *ids, size_t count,
-                                  char **out_text) {
+nput_status nput_tokenizer_decode_below(const nput_tokenizer *tokenizer, const int64_t *ids,
+                                        size_t count, int64_t limit, char **out_text) {
     if (tokenizer == NULL || out_text == NULL) {
         return NPUT_ERR_INVALID_ARGUMENT;
     }
@@ -336,7 +337,7 @@ nput_status nput_tokenizer_decode(const nput_tokenizer *tokenizer, const int64_t
     size_t total = 0;
     for (size_t i = 0; i < count; ++i) {
         const int64_t id = ids[i];
-        if (id < 0 || id >= NPUT_TOKENIZER_SPECIAL_FIRST || (size_t)id >= tokenizer->vocab_size) {
+        if (id < 0 || id >= limit || (size_t)id >= tokenizer->vocab_size) {
             continue;
         }
         total += tokenizer->lengths[id];
@@ -349,7 +350,7 @@ nput_status nput_tokenizer_decode(const nput_tokenizer *tokenizer, const int64_t
     size_t written = 0;
     for (size_t i = 0; i < count; ++i) {
         const int64_t id = ids[i];
-        if (id < 0 || id >= NPUT_TOKENIZER_SPECIAL_FIRST || (size_t)id >= tokenizer->vocab_size) {
+        if (id < 0 || id >= limit || (size_t)id >= tokenizer->vocab_size) {
             continue;
         }
         const size_t length = tokenizer->lengths[id];
@@ -362,6 +363,12 @@ nput_status nput_tokenizer_decode(const nput_tokenizer *tokenizer, const int64_t
     text[written] = '\0';
     *out_text = text;
     return NPUT_OK;
+}
+
+nput_status nput_tokenizer_decode(const nput_tokenizer *tokenizer, const int64_t *ids, size_t count,
+                                  char **out_text) {
+    return nput_tokenizer_decode_below(tokenizer, ids, count, NPUT_TOKENIZER_SPECIAL_FIRST,
+                                       out_text);
 }
 
 size_t nput_tokenizer_vocabulary_size(const nput_tokenizer *tokenizer) {

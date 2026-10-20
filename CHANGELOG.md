@@ -7,6 +7,47 @@
 
 暂无。
 
+## [0.2.0] - 2026-10-20
+
+### 变更
+
+- 公共 ASR 接口与 Whisper 解耦：`nput_asr_transcribe` / `nput_asr_detect_language`
+  改为直接接收 16 kHz 单声道采样点（`const float *samples, size_t count`），
+  调用方不再需要构造 `nput_mel`。
+- `nput_asr_options` 新增 `backend` 字段；`NULL`、`""` 或 `"whisper"` 使用 Whisper，
+  默认行为不变。CLI 参数未改变。
+- Whisper 实现迁入 `src/nput/backend_whisper.c`：特殊 token、张量名、静态形状、
+  语言码表与词表上界集中在该文件；`src/nput/asr.c` 只负责后端选择与分发。
+
+### 新增
+
+- 内部后端表（create / detect_language / transcribe / destroy），为接入 Paraformer、
+  SenseVoice 等其它 ASR 模型提供扩展点。
+- 内部后端注册接口 `nput_asr_backend_register`：仅供测试使用，不在安装头文件中，
+  不属于稳定公共 API。
+- `nput_tokenizer_decode_below` 内部接口，允许后端指定自己的特殊 token 边界。
+- 测试：桩后端覆盖后端选择、转写、语言检测、未知后端与参数错误；ctest 由 8 项增至 9 项。
+
+### 破坏性变更
+
+- `nput_asr_transcribe` / `nput_asr_detect_language` 的签名改变，
+  `nput_asr_options` 尺寸改变；需要重新编译调用方。
+- `nput_mel` 仍是公共能力（`nput_mel_compute` 可单独使用），但不再是 ASR 接口的输入。
+
+### 迁移
+
+```c
+/* 0.1.x */
+nput_mel mel;
+nput_mel_compute(samples, count, &mel);
+nput_asr_transcribe(asr, &mel, language, &text);
+nput_mel_free(&mel);
+
+/* 0.2.0：samples 为 16 kHz 单声道，count 通常不超过 480000 */
+nput_asr_transcribe(asr, samples, count, language, &text);
+nput_asr_detect_language(asr, samples, count, &language);
+```
+
 ## [0.1.1] - 2026-10-19
 
 ### 新增

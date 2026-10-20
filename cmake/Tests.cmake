@@ -55,6 +55,11 @@ nput_add_test(nput_decode_guard_tests
     SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_decode_guard.c
 )
 
+nput_add_test(nput_asr_backend_tests
+    SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_asr_backend.c
+    LIBS nput_core
+)
+
 if(TARGET nput-transcribe)
     add_test(NAME nput_cli_help COMMAND $<TARGET_FILE:nput-transcribe> --help)
     set_tests_properties(nput_cli_help PROPERTIES

@@ -1,6 +1,7 @@
 # nput-transcribe
 
 Whisper 语音转写命令行工具（C11）：**编码器跑在 Intel NPU，解码器留在 CPU**。
+ASR 层按模型后端组织，Whisper 是当前默认后端。
 输入 WAV，以及系统解码器支持的压缩音频（Windows：MP3/M4A/FLAC/WMA）。
 
 ```text
@@ -45,7 +46,8 @@ OpenVINO 运行时按 `OPENVINO_ROOT` → 环境变量 → `pip install openvino
 | 自动检测、JSON、看耗时 | `nput-transcribe -m <模型> -f json -v in.wav` |
 
 `--cache-dir` 建议常设：NPU 首次编译约 20–30 s，之后从缓存加载约 1–2 s。
-`ctest` 覆盖 WAV、重采样、log-mel（与 transformers 数值一致）、BPE、分段、3-gram 与 CLI。
+`ctest` 覆盖 WAV、重采样、log-mel（与 transformers 数值一致）、BPE、分段、3-gram、
+后端选择与 CLI。
 
 ## 参数
 
@@ -66,6 +68,29 @@ OpenVINO 运行时按 `OPENVINO_ROOT` → 环境变量 → `pip install openvino
 
 需要本机专属构建配置时，把 `CMakeUserPresets.example.json` 复制为
 `CMakeUserPresets.json` 再修改（后者已被 `.gitignore` 忽略）。
+
+## 架构与后端扩展
+
+```text
+src/main.c                 CLI、音频前处理、输出格式
+src/nput/asr.c             后端选择、会话生命周期、调用分发
+src/nput/backend.h         内部后端表（create / detect_language / transcribe / destroy）
+src/nput/backend_whisper.c Whisper：log-mel、编码器、贪心解码、BPE、语言码表
+```
+
+公共 ASR 接口只接收 16 kHz 单声道采样点，调用方不接触特征表示：
+
+```c
+nput_status nput_asr_transcribe(nput_asr *asr, const float *samples, size_t count,
+                                int32_t language_token, char **out_text);
+nput_status nput_asr_detect_language(nput_asr *asr, const float *samples, size_t count,
+                                     int32_t *out_token);
+```
+
+`nput_asr_options.backend` 按名称选择后端，`NULL`、`""` 或 `"whisper"` 使用 Whisper；
+CLI 目前不暴露 `--backend`，参数与输出格式保持不变。新增后端的步骤见
+[CONTRIBUTING.md](CONTRIBUTING.md)。`nput_mel_compute` 仍可作为独立的特征提取能力使用，
+但不再是 ASR 接口的必需输入。
 
 ## 性能实测
 
@@ -124,6 +149,34 @@ cmake --install build/release --prefix C:\libs\nput-transcribe
   OpenVINO DLL（把 `%OPENVINO_ROOT%\libs` 加入 PATH，或在 CMake 中调用
   `nput_install_runtime_dlls(app)` 复制到产物目录）。
 
+最小调用示例：
+
+```c
+#include <stdio.h>
+
+#include "nput/asr.h"
+
+nput_asr_options options;
+nput_asr_options_init(&options);
+options.model_dir = "C:/models/whisper-base-int8-ov"; /* backend 默认 Whisper */
+
+nput_asr *asr = NULL;
+if (nput_asr_create(&options, &asr) != NPUT_OK) {
+    return 1;
+}
+
+char *text = NULL;
+/* samples 为 16 kHz 单声道 [-1, 1]；count 通常不超过 480000（30 秒） */
+if (nput_asr_transcribe(asr, samples, count, -1, &text) == NPUT_OK) {
+    printf("%s\n", text);
+    nput_free(text);
+}
+nput_asr_destroy(asr);
+```
+
+0.1.x 中先 `nput_mel_compute` 再转写的调用需要按
+[CHANGELOG.md](CHANGELOG.md) 的迁移示例改为直接传采样点。
+
 ## VS Code
 
 - CMake Tools 已配置为预设模式：选择 `debug` / `release`，`F7` 构建，Test 按钮跑 ctest。
@@ -133,7 +186,7 @@ cmake --install build/release --prefix C:\libs\nput-transcribe
 ## 目录
 
 ```text
-include/nput/  公共头文件          src/nput/  实现
+include/nput/  公共头文件          src/nput/  实现（asr.c 分发，backend_*.c 模型后端）
 src/main.c     CLI                 tests/     Unity 单元测试
 cmake/         构建模块            scripts/   构建、打包与语料脚本
 LICENSES/      第三方许可全文

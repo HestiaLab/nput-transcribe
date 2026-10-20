@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21...4.3)
 
 project(NpuTranscribe
-    VERSION 0.1.1
+    VERSION 0.2.0
     DESCRIPTION "Whisper speech transcription CLI that runs the encoder on the Intel NPU"
     LANGUAGES C
 )
