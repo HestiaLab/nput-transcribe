@@ -32,8 +32,8 @@ ctest --preset debug
   `WhisperFeatureExtractor`，属于独立来源，不要用本仓库的输出反向生成。
 - NPU 只接受静态形状：编码器输入固定为 `1 x 80 x 3000`，不要把它改成动态。
 - 不要在 NPU 上编译解码器：该 IR 的 KV 缓存是动态形状，只会失败。
-- 新增设备相关代码时，把 `#ifdef` 收敛在 `src/nput/platform.c` 与
-  `src/nput/media_foundation.c`。
+- 新增设备相关代码时，把 `#ifdef` 收敛在 `src/nput/platform/platform.c` 与
+  `src/nput/platform/media_foundation.c`。
 
 ## 验证要求
 

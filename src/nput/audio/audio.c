@@ -1,6 +1,6 @@
 #include "nput/audio.h"
 
-#include "nput/internal.h"
+#include "audio/decode.h"
 
 #include <stdlib.h>
 #include <string.h>

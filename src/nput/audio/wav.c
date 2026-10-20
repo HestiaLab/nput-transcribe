@@ -2,7 +2,8 @@
 #define _XOPEN_SOURCE 700
 #endif
 
-#include "nput/internal.h"
+#include "audio/decode.h"
+#include "nput/path.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -124,13 +125,19 @@ nput_status nput_wav_decode(const char *path, nput_audio *out) {
         }
         const uint32_t size = read_u32le(chunk + 4);
         if (memcmp(chunk, "fmt ", 4) == 0) {
+            if (size < 16) {
+                break; /* fmt 块不足以容纳 WAVEFORMAT 的固定字段。 */
+            }
             unsigned char format[40];
             size_t to_read = size > sizeof(format) ? sizeof(format) : size;
             if (fread(format, 1, to_read, file) != to_read) {
                 break;
             }
-            if (size > to_read) {
-                NPUT_FSEEK(file, (int64_t)(size - to_read), SEEK_CUR);
+            if (size > to_read && NPUT_FSEEK(file, (int64_t)(size - to_read), SEEK_CUR) != 0) {
+                break;
+            }
+            if ((size & 1u) != 0 && NPUT_FSEEK(file, 1, SEEK_CUR) != 0) {
+                break;
             }
             tag = read_u16le(format);
             channels = read_u16le(format + 2);
@@ -161,11 +168,12 @@ nput_status nput_wav_decode(const char *path, nput_audio *out) {
         fclose(file);
         return NPUT_ERR_FORMAT;
     }
-    if (bits != 8 && bits != 16 && bits != 24 && bits != 32 && bits != 64) {
-        fclose(file);
-        return NPUT_ERR_FORMAT;
-    }
-    if (tag == NPUT_WAV_TAG_FLOAT && bits != 32 && bits != 64) {
+    if (tag == NPUT_WAV_TAG_FLOAT) {
+        if (bits != 32 && bits != 64) {
+            fclose(file);
+            return NPUT_ERR_FORMAT;
+        }
+    } else if (bits != 8 && bits != 16 && bits != 24 && bits != 32) {
         fclose(file);
         return NPUT_ERR_FORMAT;
     }
@@ -197,10 +205,14 @@ nput_status nput_wav_decode(const char *path, nput_audio *out) {
         }
         wanted -= wanted % frame_bytes;
         if (wanted == 0) {
+            /* data 块声明长度不是帧大小的整数倍。 */
+            status = NPUT_ERR_IO;
             break;
         }
         const size_t got = fread(block, 1, wanted, file);
-        if (got < frame_bytes) {
+        if (got != wanted) {
+            /* 短读：文件在声明的 data 长度之前结束，或发生 I/O 错误。 */
+            status = NPUT_ERR_IO;
             break;
         }
         const size_t frames_read = got / frame_bytes;

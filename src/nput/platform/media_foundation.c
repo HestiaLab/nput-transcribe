@@ -1,4 +1,4 @@
-#include "nput/internal.h"
+#include "audio/decode.h"
 
 #include <stdint.h>
 #include <stdlib.h>

@@ -59,11 +59,12 @@ OpenVINO 运行时按 `OPENVINO_ROOT` → 环境变量 → `pip install openvino
 | `--vocab <文件>` | `vocab.json`，默认 `<model>/vocab.json` |
 | `--encoder-device` / `--decoder-device` | 默认 `NPU` / `CPU` |
 | `--cache-dir <目录>` | 编译缓存目录 |
-| `-l, --language <代码>` | `en`、`zh` 等；`auto` 自动检测（默认） |
+| `-l, --language <代码>` | `en`、`zh` 等；`auto` 表示每个文件独立自动检测（默认） |
 | `-f, --format <格式>` | `txt`（默认）、`srt`、`json` |
 | `-o, --output <路径>` | 写入文件（自动创建父目录），默认输出到 stdout |
 | `--max-tokens <n>` | 每 30 秒片段的 token 上限（默认 224） |
 | `-v, --verbose` | 在 stderr 打印每段耗时 |
+| `--` | 其后全部视为输入文件（可处理以 `-` 开头的文件名） |
 | `--list-devices` | 列出 OpenVINO 可用设备后退出 |
 | `--list-models` | 列出可用模型目录后退出（含 `NPUT_MODEL_DIR`） |
 | `--version` / `-h` | 版本 / 帮助 |
@@ -74,11 +75,19 @@ OpenVINO 运行时按 `OPENVINO_ROOT` → 环境变量 → `pip install openvino
 ## 架构与后端扩展
 
 ```text
-src/main.c                 CLI、音频前处理、输出格式
-src/nput/asr.c             后端选择、会话生命周期、调用分发
-src/nput/backend.h         内部后端表（create / detect_language / transcribe / destroy）
-src/nput/backend_whisper.c Whisper：log-mel、编码器、贪心解码、BPE、语言码表
+include/nput/path.h        UTF-8 路径打开与父目录创建
+include/nput/model.h       模型目录发现
+src/main.c                 CLI、音频前处理
+src/cli_args.c             CLI 参数解析
+src/cli_output.c           txt / srt / json 输出格式化
+src/nput/asr/              后端选择、会话生命周期、选项归一化、Whisper 后端
+src/nput/audio/            解码入口、WAV、重采样、log-mel、分段
+src/nput/core/             状态码、错误详情、私有导出宏
+src/nput/platform/         平台文件/路径、单调时钟与 Media Foundation 解码
+src/nput/text/             字节级 BPE、词表上界、3-gram
 ```
+
+`src/nput/` 是 `nput_core` 的私有包含根；CLI 只依赖 `include/nput/` 的公共头。
 
 公共 ASR 接口只接收 16 kHz 单声道采样点，调用方不接触特征表示：
 
@@ -93,6 +102,9 @@ nput_status nput_asr_detect_language(nput_asr *asr, const float *samples, size_t
 CLI 目前不暴露 `--backend`，参数与输出格式保持不变。新增后端的步骤见
 [CONTRIBUTING.md](CONTRIBUTING.md)。`nput_mel_compute` 仍可作为独立的特征提取能力使用，
 但不再是 ASR 接口的必需输入。
+
+库不直接写 stderr：失败细节通过 `nput_last_error()` 读取，由调用方决定是否展示；
+成功不会自动清空，需要时调用 `nput_clear_error()`。
 
 ## 性能实测
 

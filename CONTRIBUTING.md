@@ -31,7 +31,7 @@ ctest --preset debug
    - `transcribe` 分配文本并填充 `nput_asr_timings`；
    - `detect_language` 不更新 `nput_asr_last_timings`；
    - 模型专属常量（张量名、静态形状、特殊 token、语言码表、词表边界）留在该文件。
-2. 在 `src/nput/asr.c` 的 `backends[]` 中注册为内置后端；仅测试使用的后端可在
+2. 在 `src/nput/asr/asr.c` 的 `backends[]` 中注册为内置后端；仅测试使用的后端可在
    测试代码中调用 `nput_asr_backend_register`。
 3. 把新文件加入 `cmake/Sources.cmake` 的 `NPUT_CORE_SOURCES`。
 4. 按 `tests/test_asr_backend.c` 的模式增加不依赖真实模型的测试，覆盖后端选择、
@@ -64,7 +64,8 @@ feat/<主题>    fix/<主题>    docs/<主题>
 - [ ] GitHub Actions 的 CI 通过（Windows MinGW GCC、Linux GCC / Clang、ASan）。
 - [ ] `ctest --preset debug` 全部通过；改推理路径时附真实音频的 `-v` 结果。
 - [ ] 公开接口只放在 `include/nput/`，实现细节留在 `src/`。
-- [ ] 设备相关的 `#ifdef` 收敛在 `src/nput/platform.c` 与 `src/nput/media_foundation.c`。
+- [ ] 设备相关的 `#ifdef` 收敛在 `src/nput/platform/platform.c` 与
+      `src/nput/platform/media_foundation.c`。
 - [ ] 不为通过测试放宽断言或阈值（`tests/test_mel.c` 的参考值来自 transformers）。
 - [ ] 公共 API 变更说明影响范围，并按 SemVer 更新版本号与 `CHANGELOG.md` 迁移说明。
 - [ ] 新增或修改后端时，桩测试覆盖选择、转写、语言检测与错误路径。

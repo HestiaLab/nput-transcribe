@@ -43,8 +43,9 @@ target_compile_definitions(nput_core PUBLIC NPUT_VERSION="${PROJECT_VERSION}")
 target_include_directories(nput_core
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/nput
 )
 if(BUILD_SHARED_LIBS)
     target_compile_definitions(nput_core
@@ -52,7 +53,8 @@ if(BUILD_SHARED_LIBS)
         PRIVATE NPUT_BUILDING_LIBRARY)
     set_target_properties(nput_core PROPERTIES
         VERSION ${PROJECT_VERSION}
-        SOVERSION ${PROJECT_VERSION_MAJOR})
+        SOVERSION ${PROJECT_VERSION_MAJOR}
+        C_VISIBILITY_PRESET hidden)
 endif()
 target_link_libraries(nput_core PRIVATE nput_openvino)
 if(nput_openvino_dlls)
@@ -73,6 +75,10 @@ set_target_properties(nput_core PROPERTIES
 if(NPUT_BUILD_CLI)
     add_executable(nput-transcribe ${NPUT_CLI_SOURCES})
     target_link_libraries(nput-transcribe PRIVATE nput_core)
+    if(WIN32)
+        # CommandLineToArgvW：从宽字符命令行重建 UTF-8 argv。
+        target_link_libraries(nput-transcribe PRIVATE shell32)
+    endif()
     nput_target_defaults(nput-transcribe)
     set_target_properties(nput-transcribe PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"

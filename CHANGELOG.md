@@ -7,11 +7,29 @@
 
 ### 新增
 
+- 公共 `nput/path.h`：UTF-8 路径打开与父目录创建。
+- 公共 `nput/model.h`：模型目录发现（原内部接口）。
+- 公共 `nput_last_error()` / `nput_clear_error()`：线程局部的失败详情，库不再直接写 stderr。
+- CLI 参数解析与输出格式化的单元测试（`nput_cli_args_tests`、`nput_cli_output_tests`）。
+- `nput_api_surface` 测试：`NPUT_API` 只能出现在 `include/nput/`，公共头不得包含内部头。
 - GitHub Actions CI：Windows（MinGW GCC）与 Linux（GCC、Clang、Debug + ASan）构建并运行 `ctest`。
 - 标签触发的 Release 工作流：构建、测试、打包 Windows x64 产物并创建 GitHub Release。
 
+### 变更
+
+- 内部头按模块拆分，源码按 `asr/`、`audio/`、`core/`、`platform/`、`text/` 分层；
+  删除 `src/nput/internal.h`，CLI 只依赖 `include/nput/` 公共头。
+- 默认设备与 `max_tokens` 在 `nput_asr_create` 统一归一化，后端不再各自兜底。
+- 后端注册表改为私有导出（`NPUT_PRIVATE_API`），共享构建隐藏内部符号。
+- `--language auto` 改为每个文件独立检测；新增 `--` 结束选项。
+
 ### 修复
 
+- CLI JSON 输出在文件解码失败时的空指针崩溃；TXT 多文件不再打印 `(null)`。
+- Windows 非 ASCII 路径：argv、`NPUT_MODEL_DIR`、`--vocab`、输入与 `-o` 路径。
+- 截断 WAV 被当作成功；PCM 64 位与过短 `fmt ` 块的解析问题；奇数 RIFF 块填充。
+- `--max-tokens` 溢出与非法值；stdout 写入失败未反映到退出码。
+- `NPUT_BUILD_CLI=OFF` 时测试缺少 OpenVINO 运行时 DLL。
 - Linux 构建：`platform.c` 与 `wav.c` 声明 POSIX 特性宏，修复 `time_t`、`mkdir`、
   `fseeko` 等符号不可见的问题。
 - `cmake/OpenVINO.cmake` 支持 Linux wheel 中带版本号的 `libopenvino_c.so`。

@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 #include "nput/asr.h"
-#include "nput/export.h"
+#include "core/private_export.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -15,6 +15,7 @@ extern "C" {
  * @brief 模型后端需要实现的内部接口。
  *
  * `create` 只在调用期间看到 `options`，不得保存其中的字符串指针。
+ * 会话层已把设备与 `max_tokens` 归一化为有效值，后端可直接使用。
  * `transcribe` 负责分配文本；成功后通过 `out_timings` 返回本次耗时。
  * `detect_language` 不更新 ::nput_asr_last_timings。
  */
@@ -48,7 +49,7 @@ const nput_asr_backend *nput_asr_backend_find(const char *name);
  * @return 成功时返回 NPUT_OK；参数不完整时返回 NPUT_ERR_INVALID_ARGUMENT；
  *         注册表已满时返回 NPUT_ERR_OUT_OF_MEMORY。
  */
-nput_status NPUT_API nput_asr_backend_register(const nput_asr_backend *backend);
+nput_status NPUT_PRIVATE_API nput_asr_backend_register(const nput_asr_backend *backend);
 
 #ifdef __cplusplus
 }

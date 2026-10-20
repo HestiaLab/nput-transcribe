@@ -2,7 +2,8 @@
 #define _XOPEN_SOURCE 700
 #endif
 
-#include "nput/internal.h"
+#include "nput/model.h"
+#include "nput/path.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -62,7 +63,8 @@ nput_status nput_create_parent_dirs(const char *utf8_path) {
     }
 
     nput_status status = NPUT_OK;
-    for (size_t i = start + 1; wide[i] != L'\0'; ++i) {
+    const size_t wide_length = wcslen(wide);
+    for (size_t i = start + 1; i < wide_length; ++i) {
         if (wide[i] != L'\\' && wide[i] != L'/') {
             continue;
         }

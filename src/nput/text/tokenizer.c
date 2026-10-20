@@ -1,7 +1,7 @@
 #include "nput/tokenizer.h"
 
-#include "nput/internal.h"
-#include "nput/tokenizer_internal.h"
+#include "nput/path.h"
+#include "text/tokenizer_backend.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -10,10 +10,7 @@
 enum {
     NPUT_TOKENIZER_MAX_ID = 65536,
     NPUT_TOKENIZER_MAX_TOKEN_CODEPOINTS = 256,
-    NPUT_TOKENIZER_CODEPOINT_TABLE = 512,
-    /* Whisper 的字节级词表到这里结束；更大的 id 是特殊 token 或时间戳 token，
-       不应出现在转写文本中。 */
-    NPUT_TOKENIZER_SPECIAL_FIRST = 50257
+    NPUT_TOKENIZER_CODEPOINT_TABLE = 512
 };
 
 struct nput_tokenizer {

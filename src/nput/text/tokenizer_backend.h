@@ -1,5 +1,5 @@
-#ifndef NPUT_TOKENIZER_INTERNAL_H
-#define NPUT_TOKENIZER_INTERNAL_H
+#ifndef NPUT_TOKENIZER_BACKEND_H
+#define NPUT_TOKENIZER_BACKEND_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -10,6 +10,11 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+enum {
+    /* Whisper 字节级 BPE 词表上界；也是 eot 与特殊/时间戳 token 的起点。 */
+    NPUT_TOKENIZER_SPECIAL_FIRST = 50257
+};
 
 /**
  * @brief 解码 token id，并跳过大于等于 `limit` 的 id。

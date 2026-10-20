@@ -1,15 +1,4 @@
-#if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)
-#define _POSIX_C_SOURCE 200809L
-#endif
-
 #include "nput/asr.h"
-
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#else
-#include <time.h>
-#endif
 
 #include <openvino/c/openvino.h>
 
@@ -17,11 +6,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "nput/backend.h"
+#include "asr/backend.h"
+#include "core/error.h"
 #include "nput/mel.h"
 #include "nput/tokenizer.h"
-#include "nput/tokenizer_internal.h"
-#include "nput/trigram.h"
+#include "platform/clock.h"
+#include "text/tokenizer_backend.h"
+#include "text/trigram.h"
 
 enum {
     NPUT_ASR_START_OF_TRANSCRIPT = 50258,
@@ -29,11 +20,10 @@ enum {
     NPUT_ASR_LANGUAGE_LAST = 50357,
     NPUT_ASR_TRANSCRIBE = 50359,
     NPUT_ASR_NO_TIMESTAMPS = 50363,
-    NPUT_ASR_END_OF_TEXT = 50257,
+    NPUT_ASR_END_OF_TEXT = NPUT_TOKENIZER_SPECIAL_FIRST,
     WHISPER_HIDDEN_SIZE = 512,
-    WHISPER_ENCODER_FRAMES = 1500,
-    WHISPER_DEFAULT_MAX_TOKENS = 224,
-    WHISPER_VOCAB_SIZE = 50257,
+    /* 编码器卷积步长为 2；由 mel 帧数推导，不重复 1500 这个事实。 */
+    WHISPER_ENCODER_FRAMES = NPUT_MEL_FRAMES / 2,
     NPUT_ASR_PATH_MAX = 1024
 };
 
@@ -73,29 +63,12 @@ static const struct language_entry NPUT_LANGUAGES[] = {
     {"ba", 50355}, {"jw", 50356}, {"su", 50357},
 };
 
-/* 单调时钟，单位为毫秒；不受系统校时影响。 */
-static double monotonic_ms(void) {
-#ifdef _WIN32
-    static LARGE_INTEGER frequency;
-    LARGE_INTEGER now;
-    if (frequency.QuadPart == 0) {
-        QueryPerformanceFrequency(&frequency);
-    }
-    QueryPerformanceCounter(&now);
-    return (double)now.QuadPart * 1000.0 / (double)frequency.QuadPart;
-#else
-    struct timespec now;
-    clock_gettime(CLOCK_MONOTONIC, &now);
-    return (double)now.tv_sec * 1000.0 + (double)now.tv_nsec / 1e6;
-#endif
-}
-
-/* 检查 OpenVINO 调用结果；失败时始终打印步骤名，避免默认模式下只剩笼统的错误。 */
+/* 检查 OpenVINO 调用结果；失败时记录步骤名，供调用方决定是否展示。 */
 static int openvino_step(ov_status_e status, const char *what) {
     if (status == OK) {
         return 1;
     }
-    fprintf(stderr, "OpenVINO：%s 失败（状态码 %d）\n", what, (int)status);
+    nput_set_error("OpenVINO：%s 失败（状态码 %d）", what, (int)status);
     return 0;
 }
 
@@ -134,11 +107,11 @@ static nput_status whisper_create(const nput_asr_options *options, void **out_st
     if (asr == NULL) {
         return NPUT_ERR_OUT_OF_MEMORY;
     }
-    asr->max_tokens = options->max_tokens > 0 ? options->max_tokens : WHISPER_DEFAULT_MAX_TOKENS;
+    asr->max_tokens = options->max_tokens;
     asr->verbose = options->verbose;
 
-    const char *encoder_device = options->encoder_device != NULL ? options->encoder_device : "NPU";
-    const char *decoder_device = options->decoder_device != NULL ? options->decoder_device : "CPU";
+    const char *encoder_device = options->encoder_device;
+    const char *decoder_device = options->decoder_device;
     const char *cache_dir = options->cache_dir;
 
     char encoder_xml[NPUT_ASR_PATH_MAX];
@@ -181,14 +154,19 @@ static nput_status whisper_create(const nput_asr_options *options, void **out_st
     {
         int64_t dims[3] = {1, NPUT_MEL_BINS, NPUT_MEL_FRAMES};
         ov_partial_shape_t shape;
-        if (ov_partial_shape_create_static(3, dims, &shape) != OK ||
-            !openvino_step(ov_model_reshape_single_input(encoder_model, shape),
-                           "设置编码器输入形状")) {
+        if (ov_partial_shape_create_static(3, dims, &shape) != OK) {
             ov_model_free(encoder_model);
             whisper_destroy(asr);
             return NPUT_ERR_RUNTIME;
         }
+        const int reshaped = openvino_step(ov_model_reshape_single_input(encoder_model, shape),
+                                           "设置编码器输入形状");
         ov_partial_shape_free(&shape);
+        if (!reshaped) {
+            ov_model_free(encoder_model);
+            whisper_destroy(asr);
+            return NPUT_ERR_RUNTIME;
+        }
     }
     ov_status_e compile_status;
     if (cache_dir != NULL) {
@@ -226,7 +204,7 @@ static nput_status whisper_create(const nput_asr_options *options, void **out_st
 
     status = nput_tokenizer_load(vocab_json, &asr->tokenizer);
     if (status != NPUT_OK) {
-        fprintf(stderr, "错误：无法加载词表 %s：%s\n", vocab_json, nput_status_string(status));
+        nput_set_error("无法加载词表 %s：%s", vocab_json, nput_status_string(status));
         whisper_destroy(asr);
         return status;
     }
@@ -276,12 +254,12 @@ static nput_status run_encoder(struct whisper_backend *asr, const nput_mel *mel,
         return NPUT_ERR_RUNTIME;
     }
 
-    const double start = monotonic_ms();
+    const double start = nput_monotonic_ms();
     int ok =
         openvino_step(ov_infer_request_set_tensor(asr->encoder_request, "input_features", input),
                       "设置编码器输入") &&
         openvino_step(ov_infer_request_infer(asr->encoder_request), "运行编码器");
-    *elapsed_ms = monotonic_ms() - start;
+    *elapsed_ms = nput_monotonic_ms() - start;
     ov_tensor_free(input);
     if (!ok) {
         return NPUT_ERR_RUNTIME;
@@ -299,8 +277,9 @@ static nput_status run_encoder(struct whisper_backend *asr, const nput_mel *mel,
         ov_tensor_free(hidden);
         return NPUT_ERR_RUNTIME;
     }
-    const int shape_ok = hidden_shape.rank == 3 && hidden_shape.dims[1] == WHISPER_ENCODER_FRAMES &&
-                         hidden_shape.dims[2] == WHISPER_HIDDEN_SIZE;
+    const int shape_ok =
+        hidden_shape.rank == 3 && hidden_shape.dims[1] == WHISPER_ENCODER_FRAMES &&
+        hidden_shape.dims[2] == WHISPER_HIDDEN_SIZE;
     ov_shape_free(&hidden_shape);
     if (!shape_ok) {
         ov_tensor_free(hidden);
@@ -334,8 +313,11 @@ static nput_status decode_loop(struct whisper_backend *asr, ov_tensor_t *hidden,
     ov_tensor_t *beam_tensor = NULL;
     nput_status result = NPUT_ERR_RUNTIME;
 
-    if (ov_shape_create(2, token_dims, &token_shape) != OK ||
-        ov_shape_create(1, beam_dims, &beam_shape) != OK) {
+    if (ov_shape_create(2, token_dims, &token_shape) != OK) {
+        goto cleanup;
+    }
+    if (ov_shape_create(1, beam_dims, &beam_shape) != OK) {
+        ov_shape_free(&token_shape);
         goto cleanup;
     }
     const ov_status_e token_status =
@@ -569,10 +551,10 @@ static nput_status whisper_transcribe(void *state, const float *samples, size_t 
         return NPUT_ERR_OUT_OF_MEMORY;
     }
 
-    const double decoder_start = monotonic_ms();
+    const double decoder_start = nput_monotonic_ms();
     size_t count_out = 0;
     status = decode_loop(asr, hidden, language_token, ids, capacity, &count_out, NULL, 0);
-    asr->timings.decoder_ms = monotonic_ms() - decoder_start;
+    asr->timings.decoder_ms = nput_monotonic_ms() - decoder_start;
     asr->timings.encoder_ms = encoder_ms;
     asr->timings.tokens = count_out;
     *out_timings = asr->timings;
@@ -580,8 +562,8 @@ static nput_status whisper_transcribe(void *state, const float *samples, size_t 
 
     if (status == NPUT_OK) {
         char *raw_text = NULL;
-        status = nput_tokenizer_decode_below(asr->tokenizer, ids, count_out, WHISPER_VOCAB_SIZE,
-                                             &raw_text);
+        status = nput_tokenizer_decode_below(asr->tokenizer, ids, count_out,
+                                             NPUT_TOKENIZER_SPECIAL_FIRST, &raw_text);
         if (status == NPUT_OK) {
             /* Whisper 在第一个词前会输出一个空格。 */
             const char *begin = raw_text;

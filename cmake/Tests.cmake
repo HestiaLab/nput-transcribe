@@ -13,10 +13,15 @@ function(nput_add_test target)
         PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
             ${CMAKE_CURRENT_SOURCE_DIR}/src
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/nput
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/vendor/unity
     )
     if(NPUT_TEST_LIBS)
         target_link_libraries(${target} PRIVATE ${NPUT_TEST_LIBS})
+        # 链接 nput_core 的测试与 CLI 共用 bin/，需要 OpenVINO 运行时。
+        if("nput_core" IN_LIST NPUT_TEST_LIBS)
+            nput_install_runtime_dlls(${target})
+        endif()
     endif()
     nput_target_defaults(${target})
     set_target_properties(${target} PROPERTIES
@@ -59,6 +64,27 @@ nput_add_test(nput_asr_backend_tests
     SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_asr_backend.c
     LIBS nput_core
 )
+
+nput_add_test(nput_error_tests
+    SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_error.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/nput/core/status.c
+)
+
+nput_add_test(nput_cli_args_tests
+    SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cli_args.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/cli_args.c
+)
+
+nput_add_test(nput_cli_output_tests
+    SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cli_output.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/cli_output.c
+)
+
+add_test(NAME nput_api_surface
+    COMMAND ${CMAKE_COMMAND}
+        -DNPUT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/check-api-surface.cmake)
+set_tests_properties(nput_api_surface PROPERTIES LABELS "policy")
 
 if(TARGET nput-transcribe)
     add_test(NAME nput_cli_help COMMAND $<TARGET_FILE:nput-transcribe> --help)

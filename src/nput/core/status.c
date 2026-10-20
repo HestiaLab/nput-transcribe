@@ -1,6 +1,17 @@
+#include "core/error.h"
 #include "nput/status.h"
 
+#include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
+
+#if defined(_MSC_VER)
+#define NPUT_THREAD_LOCAL __declspec(thread)
+#else
+#define NPUT_THREAD_LOCAL _Thread_local
+#endif
+
+static NPUT_THREAD_LOCAL char nput_error_message[512];
 
 const char *nput_status_string(nput_status status) {
     switch (status) {
@@ -25,4 +36,19 @@ const char *nput_status_string(nput_status status) {
 
 void nput_free(void *pointer) {
     free(pointer);
+}
+
+const char *nput_last_error(void) {
+    return nput_error_message;
+}
+
+void nput_clear_error(void) {
+    nput_error_message[0] = '\0';
+}
+
+void nput_set_error(const char *format, ...) {
+    va_list arguments;
+    va_start(arguments, format);
+    vsnprintf(nput_error_message, sizeof(nput_error_message), format, arguments);
+    va_end(arguments);
 }

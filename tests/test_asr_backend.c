@@ -4,7 +4,7 @@
 #include <string.h>
 
 #include "nput/asr.h"
-#include "nput/backend.h"
+#include "asr/backend.h"
 #include "unity.h"
 
 enum { STUB_LANGUAGE_BASE = 4242 };

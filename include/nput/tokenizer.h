@@ -32,7 +32,7 @@ void NPUT_API nput_tokenizer_free(nput_tokenizer *tokenizer);
 /**
  * @brief 将 token id 解码为新分配的 UTF-8 字符串。
  *
- * 大于等于 50257 的 id 是 Whisper 的特殊 token / 时间戳 token，会被跳过。
+ * 大于等于 Whisper 字节级 BPE 词表上界的 id 是特殊 token / 时间戳 token，会被跳过。
  *
  * @param tokenizer 要使用的分词器；不可为 NULL。
  * @param ids 要解码的 token id；count 为 0 时允许为 NULL。
@@ -44,9 +44,12 @@ nput_status NPUT_API nput_tokenizer_decode(const nput_tokenizer *tokenizer, cons
                                            size_t count, char **out_text);
 
 /**
- * @brief 返回词表中的字节级 token 数量。
+ * @brief 返回词表的最大 token id + 1（不是有效 token 条目数）。
+ *
+ * 词表 id 可能存在空洞，因此该值只表示 id 上界，不能用来遍历有效词条。
+ *
  * @param tokenizer 要查询的分词器；不可为 NULL。
- * @return 词表大小。
+ * @return 最大 id + 1；tokenizer 为 NULL 时返回 0。
  */
 size_t NPUT_API nput_tokenizer_vocabulary_size(const nput_tokenizer *tokenizer);
 

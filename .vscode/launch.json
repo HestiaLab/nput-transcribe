@@ -26,6 +26,10 @@
                     "description": "Enable pretty-printing for gdb",
                     "text": "-enable-pretty-printing",
                     "ignoreFailures": true
+                },
+                {
+                    "description": "OpenVINO 编译模型时会触发由 SEH 处理的首次访问违例；交给程序处理，避免 gdb 误报 SIGSEGV",
+                    "text": "handle SIGSEGV nostop noprint pass"
                 }
             ],
             "stopAtEntry": false,
@@ -59,6 +63,10 @@
                     "description": "Enable pretty-printing for gdb",
                     "text": "-enable-pretty-printing",
                     "ignoreFailures": true
+                },
+                {
+                    "description": "OpenVINO 编译模型时会触发由 SEH 处理的首次访问违例；交给程序处理，避免 gdb 误报 SIGSEGV",
+                    "text": "handle SIGSEGV nostop noprint pass"
                 }
             ],
             "stopAtEntry": false,
@@ -90,6 +98,10 @@
                     "description": "Enable pretty-printing for gdb",
                     "text": "-enable-pretty-printing",
                     "ignoreFailures": true
+                },
+                {
+                    "description": "OpenVINO 编译模型时会触发由 SEH 处理的首次访问违例；交给程序处理，避免 gdb 误报 SIGSEGV",
+                    "text": "handle SIGSEGV nostop noprint pass"
                 }
             ],
             "stopAtEntry": false,

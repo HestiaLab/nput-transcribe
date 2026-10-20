@@ -26,6 +26,19 @@ typedef enum nput_status {
 const char *NPUT_API nput_status_string(nput_status status);
 
 /**
+ * @brief 返回当前线程最近一次失败的详细信息。
+ *
+ * 库在失败时记录描述性信息（例如 OpenVINO 的具体步骤），由调用方决定是否展示。
+ * 成功不会自动清空；需要时调用 ::nput_clear_error。
+ *
+ * @return 以 NUL 结尾的线程局部字符串；没有记录时返回空字符串。
+ */
+const char *NPUT_API nput_last_error(void);
+
+/** @brief 清空当前线程的错误详情。 */
+void NPUT_API nput_clear_error(void);
+
+/**
  * @brief 释放由本库通过 `char **` 输出参数分配的内存。
  * @param pointer 库返回的指针；允许为 NULL。
  */

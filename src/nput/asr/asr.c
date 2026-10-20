@@ -3,13 +3,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "nput/backend.h"
+#include "asr/backend.h"
 
 enum {
     NPUT_ASR_BACKEND_CAPACITY = 8,
-    /* 公共选项的默认解码上限；各后端可自行解释。 */
+    /* 公共选项的默认解码上限；后端的解码循环以此为上限。 */
     NPUT_ASR_DEFAULT_MAX_TOKENS = 224
 };
+
+#define NPUT_ASR_DEFAULT_ENCODER_DEVICE "NPU"
+#define NPUT_ASR_DEFAULT_DECODER_DEVICE "CPU"
 
 static const nput_asr_backend *backends[NPUT_ASR_BACKEND_CAPACITY] = {
     &nput_asr_backend_whisper,
@@ -57,14 +60,26 @@ nput_status nput_asr_backend_register(const nput_asr_backend *backend) {
     return NPUT_OK;
 }
 
+/* 会话层是默认值的唯一归一化点；后端可以直接使用这些字段。 */
+static void normalize_options(const nput_asr_options *input, nput_asr_options *output) {
+    *output = *input;
+    if (output->encoder_device == NULL) {
+        output->encoder_device = NPUT_ASR_DEFAULT_ENCODER_DEVICE;
+    }
+    if (output->decoder_device == NULL) {
+        output->decoder_device = NPUT_ASR_DEFAULT_DECODER_DEVICE;
+    }
+    if (output->max_tokens <= 0) {
+        output->max_tokens = NPUT_ASR_DEFAULT_MAX_TOKENS;
+    }
+}
+
 void nput_asr_options_init(nput_asr_options *options) {
     if (options == NULL) {
         return;
     }
     memset(options, 0, sizeof(*options));
-    options->encoder_device = "NPU";
-    options->decoder_device = "CPU";
-    options->max_tokens = NPUT_ASR_DEFAULT_MAX_TOKENS;
+    normalize_options(options, options);
 }
 
 nput_status nput_asr_create(const nput_asr_options *options, nput_asr **out_asr) {
@@ -73,7 +88,10 @@ nput_status nput_asr_create(const nput_asr_options *options, nput_asr **out_asr)
     }
     *out_asr = NULL;
 
-    const nput_asr_backend *backend = nput_asr_backend_find(options->backend);
+    nput_asr_options normalized;
+    normalize_options(options, &normalized);
+
+    const nput_asr_backend *backend = nput_asr_backend_find(normalized.backend);
     if (backend == NULL) {
         return NPUT_ERR_UNSUPPORTED;
     }
@@ -84,7 +102,7 @@ nput_status nput_asr_create(const nput_asr_options *options, nput_asr **out_asr)
     }
     asr->backend = backend;
 
-    const nput_status status = backend->create(options, &asr->state);
+    const nput_status status = backend->create(&normalized, &asr->state);
     if (status != NPUT_OK) {
         free(asr);
         return status;

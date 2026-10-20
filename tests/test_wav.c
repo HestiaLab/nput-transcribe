@@ -132,6 +132,103 @@ static void test_wav_rejects_garbage(void) {
     TEST_ASSERT_EQUAL(NPUT_ERR_FORMAT, status);
 }
 
+static nput_status load_bytes(const unsigned char *bytes, size_t size, nput_audio *audio) {
+    const char *path = "nput_test_tmp.wav";
+    FILE *file = fopen(path, "wb");
+    TEST_ASSERT_NOT_NULL(file);
+    TEST_ASSERT_EQUAL_size_t(size, fwrite(bytes, 1, size, file));
+    fclose(file);
+    const nput_status status = nput_audio_load_wav(path, audio);
+    remove(path);
+    return status;
+}
+
+static void test_wav_rejects_short_fmt(void) {
+    unsigned char wav[64];
+    size_t offset = 0;
+    memcpy(wav + offset, "RIFF", 4);
+    put_u32(wav + offset + 4, 38);
+    memcpy(wav + offset + 8, "WAVE", 4);
+    offset += 12;
+    memcpy(wav + offset, "fmt ", 4);
+    put_u32(wav + offset + 4, 14); /* 小于固定字段所需的 16 字节 */
+    offset += 8;
+    memset(wav + offset, 0, 14);
+    put_u16(wav + offset, 1);
+    put_u16(wav + offset + 2, 1);
+    put_u32(wav + offset + 4, 16000);
+    put_u32(wav + offset + 8, 32000);
+    put_u16(wav + offset + 12, 2);
+    offset += 14;
+    memcpy(wav + offset, "data", 4);
+    put_u32(wav + offset + 4, 2);
+    offset += 8;
+    wav[offset++] = 0;
+    wav[offset++] = 0;
+
+    nput_audio audio;
+    TEST_ASSERT_EQUAL(NPUT_ERR_FORMAT, load_bytes(wav, offset, &audio));
+}
+
+static void test_wav_skips_odd_chunk_padding(void) {
+    unsigned char data[4] = {0, 0, 0, 0};
+    unsigned char wav[128];
+    memcpy(wav, "RIFF", 4);
+    put_u32(wav + 4, 12 + 24 + 12 + sizeof(data));
+    memcpy(wav + 8, "WAVE", 4);
+    memcpy(wav + 12, "fmt ", 4);
+    put_u32(wav + 16, 16);
+    put_u16(wav + 20, 1);
+    put_u16(wav + 22, 1);
+    put_u32(wav + 24, 16000);
+    put_u32(wav + 28, 32000);
+    put_u16(wav + 32, 2);
+    put_u16(wav + 34, 16);
+    memcpy(wav + 36, "LIST", 4);
+    put_u32(wav + 40, 3); /* 奇数长度块，后面必须跳过 1 字节填充 */
+    wav[44] = 'a';
+    wav[45] = 'b';
+    wav[46] = 'c';
+    wav[47] = 0;
+    memcpy(wav + 48, "data", 4);
+    put_u32(wav + 52, sizeof(data));
+    memcpy(wav + 56, data, sizeof(data));
+
+    nput_audio audio;
+    TEST_ASSERT_EQUAL(NPUT_OK, load_bytes(wav, 56 + sizeof(data), &audio));
+    TEST_ASSERT_EQUAL_size_t(2, audio.count);
+    nput_audio_free(&audio);
+}
+
+static void test_wav_rejects_pcm64(void) {
+    unsigned char data[8] = {0};
+    unsigned char wav[128];
+    const size_t size = build_wav(wav, 1, 64, 16000, data, sizeof(data), 1);
+
+    nput_audio audio;
+    TEST_ASSERT_EQUAL(NPUT_ERR_FORMAT, load_bytes(wav, size, &audio));
+}
+
+static void test_wav_rejects_truncated_data(void) {
+    unsigned char data[8] = {0};
+    unsigned char wav[128];
+    const size_t size = build_wav(wav, 1, 16, 16000, data, sizeof(data), 1);
+
+    const char *path = "nput_test_tmp.wav";
+    FILE *file = fopen(path, "wb");
+    TEST_ASSERT_NOT_NULL(file);
+    /* data 块声明 8 字节，实际文件只有 4 字节。 */
+    TEST_ASSERT_EQUAL_size_t(size - 4, fwrite(wav, 1, size - 4, file));
+    fclose(file);
+
+    nput_audio audio;
+    const nput_status status = nput_audio_load_wav(path, &audio);
+    remove(path);
+    TEST_ASSERT_EQUAL(NPUT_ERR_IO, status);
+    TEST_ASSERT_NULL(audio.samples);
+    TEST_ASSERT_EQUAL_size_t(0, audio.count);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_wav_pcm16_mono);
@@ -139,5 +236,9 @@ int main(void) {
     RUN_TEST(test_wav_pcm24_mono);
     RUN_TEST(test_wav_float32_mono);
     RUN_TEST(test_wav_rejects_garbage);
+    RUN_TEST(test_wav_rejects_short_fmt);
+    RUN_TEST(test_wav_skips_odd_chunk_padding);
+    RUN_TEST(test_wav_rejects_pcm64);
+    RUN_TEST(test_wav_rejects_truncated_data);
     return UNITY_END();
 }

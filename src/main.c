@@ -3,10 +3,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "cli_args.h"
+#include "cli_output.h"
 #include "nput/asr.h"
 #include "nput/audio.h"
-#include "nput/internal.h"
 #include "nput/mel.h"
+#include "nput/model.h"
+#include "nput/path.h"
 #include "nput/segment.h"
 #include "nput/status.h"
 
@@ -17,9 +20,8 @@
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <shellapi.h>
 #endif
-
-typedef enum output_format { FORMAT_TXT = 0, FORMAT_SRT, FORMAT_JSON } output_format;
 
 typedef struct cli_options {
     const char *model_dir;
@@ -34,17 +36,77 @@ typedef struct cli_options {
     int verbose;
 } cli_options;
 
-typedef struct segment_result {
-    double start;
-    double end;
-    char *text;
-} segment_result;
+#if defined(_WIN32)
+/* Windows CRT 按 ANSI 代码页生成 argv/getenv，库则要求 UTF-8 路径，
+ * 因此在 CLI 边界统一转换，库内部的 UTF-8 契约保持不变。 */
+static char *utf8_from_wide(const wchar_t *wide) {
+    const int length = WideCharToMultiByte(CP_UTF8, 0, wide, -1, NULL, 0, NULL, NULL);
+    if (length <= 0) {
+        return NULL;
+    }
+    char *utf8 = (char *)malloc((size_t)length);
+    if (utf8 == NULL) {
+        return NULL;
+    }
+    if (WideCharToMultiByte(CP_UTF8, 0, wide, -1, utf8, length, NULL, NULL) == 0) {
+        free(utf8);
+        return NULL;
+    }
+    return utf8;
+}
 
-typedef struct file_result {
-    const char *path;
-    segment_result *segments;
-    size_t count;
-} file_result;
+static int build_utf8_argv(int *argc, char ***argv) {
+    wchar_t **wide = CommandLineToArgvW(GetCommandLineW(), argc);
+    if (wide == NULL) {
+        return 0;
+    }
+    char **utf8 = (char **)calloc((size_t)*argc + 1, sizeof(char *));
+    if (utf8 == NULL) {
+        LocalFree(wide);
+        return 0;
+    }
+    for (int i = 0; i < *argc; ++i) {
+        utf8[i] = utf8_from_wide(wide[i]);
+        if (utf8[i] == NULL) {
+            for (int j = 0; j < i; ++j) {
+                free(utf8[j]);
+            }
+            free(utf8);
+            LocalFree(wide);
+            return 0;
+        }
+    }
+    LocalFree(wide);
+    *argv = utf8;
+    return 1;
+}
+#endif
+
+/* 返回新分配的 UTF-8 环境变量值；未设置或为空时返回 NULL，调用方负责释放。 */
+static char *read_env_utf8(const char *name) {
+#if defined(_WIN32)
+    wchar_t wide_name[64];
+    if (MultiByteToWideChar(CP_UTF8, 0, name, -1, wide_name, 64) == 0) {
+        return NULL;
+    }
+    const wchar_t *value = _wgetenv(wide_name);
+    if (value == NULL || value[0] == L'\0') {
+        return NULL;
+    }
+    return utf8_from_wide(value);
+#else
+    const char *value = getenv(name);
+    if (value == NULL || value[0] == '\0') {
+        return NULL;
+    }
+    const size_t length = strlen(value);
+    char *copy = (char *)malloc(length + 1);
+    if (copy != NULL) {
+        memcpy(copy, value, length + 1);
+    }
+    return copy;
+#endif
+}
 
 static void print_usage(FILE *stream) {
     fprintf(stream,
@@ -59,36 +121,49 @@ static void print_usage(FILE *stream) {
             "      --encoder-device <d>  编码器设备（默认：NPU）\n"
             "      --decoder-device <d>  解码器设备（默认：CPU）\n"
             "      --cache-dir <目录>    OpenVINO 编译缓存目录\n"
-            "  -l, --language <代码>     语言代码（en/zh 等），auto 表示自动检测（默认：auto）\n"
+            "  -l, --language <代码>     语言代码（en/zh 等），auto 表示每个文件独立自动检测（默认：auto）\n"
             "  -f, --format <格式>       txt、srt 或 json（默认：txt）\n"
             "  -o, --output <路径>       写入文件，默认输出到标准输出\n"
             "      --max-tokens <n>      每 30 秒片段的 token 上限（默认：224）\n"
             "  -v, --verbose             在 stderr 打印每段耗时\n"
+            "      --                    其后全部视为输入文件（可处理以 - 开头的文件名）\n"
             "      --list-devices        列出 OpenVINO 设备后退出\n"
             "      --list-models         列出可用的模型目录后退出\n"
             "      --version             打印版本后退出\n"
             "  -h, --help                打印本帮助后退出\n");
 }
 
-static int parse_int(const char *text, int32_t *out_value) {
-    char *end = NULL;
-    const long value = strtol(text, &end, 10);
-    if (end == text || *end != '\0') {
-        return 0;
+static void print_error_detail(void) {
+    const char *detail = nput_last_error();
+    if (detail != NULL && detail[0] != '\0') {
+        fprintf(stderr, "  详情：%s\n", detail);
     }
-    *out_value = (int32_t)value;
-    return 1;
 }
 
 static int parse_arguments(int argc, char **argv, cli_options *options, const char ***files,
                            size_t *file_count) {
     static const char *positional[256];
     size_t positional_count = 0;
+    int options_ended = 0;
 
     for (int i = 1; i < argc; ++i) {
         const char *argument = argv[i];
         const char *value = NULL;
         const int has_next = i + 1 < argc;
+
+        if (!options_ended && strcmp(argument, "--") == 0) {
+            options_ended = 1;
+            continue;
+        }
+        if (options_ended) {
+            if (positional_count == sizeof(positional) / sizeof(positional[0])) {
+                fprintf(stderr, "错误：输入文件过多（最多 %zu 个）\n",
+                        sizeof(positional) / sizeof(positional[0]));
+                return 0;
+            }
+            positional[positional_count++] = argument;
+            continue;
+        }
 
         if (strcmp(argument, "-h") == 0 || strcmp(argument, "--help") == 0) {
             print_usage(stdout);
@@ -114,8 +189,8 @@ static int parse_arguments(int argc, char **argv, cli_options *options, const ch
                 fprintf(stderr, "错误：未找到模型目录\n");
                 exit(1);
             }
-            const char *env_model_dir = getenv("NPUT_MODEL_DIR");
-            if (env_model_dir != NULL && env_model_dir[0] != '\0') {
+            char *env_model_dir = read_env_utf8("NPUT_MODEL_DIR");
+            if (env_model_dir != NULL) {
                 printf("%s\n", env_model_dir);
             }
             for (char *line = strtok(lines, "\n"); line != NULL; line = strtok(NULL, "\n")) {
@@ -124,6 +199,7 @@ static int parse_arguments(int argc, char **argv, cli_options *options, const ch
                 }
                 printf("%s\n", line);
             }
+            free(env_model_dir);
             nput_free(lines);
             exit(0);
         }
@@ -218,8 +294,8 @@ static int parse_arguments(int argc, char **argv, cli_options *options, const ch
                 fprintf(stderr, "错误：%s 需要一个值\n", argument);
                 return 0;
             }
-            if (!parse_int(argv[++i], &options->max_tokens)) {
-                fprintf(stderr, "错误：--max-tokens 需要一个数字\n");
+            if (!cli_parse_int(argv[++i], &options->max_tokens)) {
+                fprintf(stderr, "错误：--max-tokens 需要 1 到 %ld 之间的整数\n", (long)INT32_MAX);
                 return 0;
             }
             continue;
@@ -278,49 +354,11 @@ static char *trim_text(const char *text) {
     return copy;
 }
 
-static void format_timestamp(char *buffer, size_t size, double seconds) {
-    if (seconds < 0.0) {
-        seconds = 0.0;
-    }
-    const int total_ms = (int)(seconds * 1000.0 + 0.5);
-    const int hours = total_ms / 3600000;
-    const int minutes = (total_ms / 60000) % 60;
-    const int secs = (total_ms / 1000) % 60;
-    const int millis = total_ms % 1000;
-    snprintf(buffer, size, "%02d:%02d:%02d,%03d", hours, minutes, secs, millis);
-}
-
-static void json_escape(FILE *stream, const char *text) {
-    for (const unsigned char *cursor = (const unsigned char *)text; *cursor != '\0'; ++cursor) {
-        switch (*cursor) {
-            case '"':
-                fputs("\\\"", stream);
-                break;
-            case '\\':
-                fputs("\\\\", stream);
-                break;
-            case '\n':
-                fputs("\\n", stream);
-                break;
-            case '\r':
-                fputs("\\r", stream);
-                break;
-            case '\t':
-                fputs("\\t", stream);
-                break;
-            default:
-                if (*cursor < 0x20) {
-                    fprintf(stream, "\\u%04x", *cursor);
-                } else {
-                    fputc(*cursor, stream);
-                }
-                break;
-        }
-    }
-}
-
 static nput_status transcribe_file(nput_asr *asr, const cli_options *options, const char *path,
                                    int32_t *language_token, file_result *result) {
+    /* 失败路径也会进入输出阶段，路径必须在最早的位置记录。 */
+    result->path = path;
+
     nput_audio decoded;
     nput_status status = nput_audio_load(path, &decoded);
     if (status != NPUT_OK) {
@@ -358,7 +396,6 @@ static nput_status transcribe_file(nput_asr *asr, const cli_options *options, co
         fprintf(stderr, "[%s] %zu 个片段\n", path, segment_count);
     }
 
-    result->path = path;
     result->segments = (segment_result *)calloc(segment_count == 0 ? 1 : segment_count,
                                                 sizeof(segment_result));
 
@@ -366,6 +403,7 @@ static nput_status transcribe_file(nput_asr *asr, const cli_options *options, co
         const size_t begin = segments[i].begin;
         const size_t count = segments[i].end - segments[i].begin;
         int32_t language = *language_token;
+        nput_clear_error();
         if (language < 0) {
             status = nput_asr_detect_language(asr, audio.samples + begin, count, &language);
             if (status == NPUT_OK) {
@@ -410,72 +448,23 @@ static nput_status transcribe_file(nput_asr *asr, const cli_options *options, co
     }
     if (status != NPUT_OK) {
         fprintf(stderr, "错误：转写 %s 失败：%s\n", path, nput_status_string(status));
+        print_error_detail();
     }
     return status;
-}
-
-static void write_results(FILE *stream, const cli_options *options, const file_result *results,
-                          size_t result_count) {
-    int first_entry = 1;
-    size_t cue = 1;
-    if (options->format == FORMAT_JSON) {
-        fprintf(stream, "[\n");
-    }
-    for (size_t f = 0; f < result_count; ++f) {
-        const file_result *result = &results[f];
-        if (options->format == FORMAT_JSON) {
-            if (!first_entry) {
-                fprintf(stream, ",\n");
-            }
-            first_entry = 0;
-            fprintf(stream, "  {\"file\": \"");
-            json_escape(stream, result->path);
-            fprintf(stream, "\", \"segments\": [\n");
-            for (size_t i = 0; i < result->count; ++i) {
-                fprintf(stream, "    {\"start\": %.3f, \"end\": %.3f, \"text\": \"",
-                        result->segments[i].start, result->segments[i].end);
-                json_escape(stream, result->segments[i].text);
-                fprintf(stream, "\"}%s\n", i + 1 == result->count ? "" : ",");
-            }
-            fprintf(stream, "  ]}");
-            continue;
-        }
-        if (result_count > 1) {
-            if (options->format == FORMAT_TXT) {
-                fprintf(stream, "%s==> %s <==\n", f == 0 ? "" : "\n", result->path);
-            }
-        }
-        if (options->format == FORMAT_SRT) {
-            for (size_t i = 0; i < result->count; ++i) {
-                char start[32];
-                char end[32];
-                format_timestamp(start, sizeof(start), result->segments[i].start);
-                format_timestamp(end, sizeof(end), result->segments[i].end);
-                fprintf(stream, "%zu\n%s --> %s\n%s\n\n", cue++, start, end,
-                        result->segments[i].text);
-            }
-        } else {
-            for (size_t i = 0; i < result->count; ++i) {
-                fprintf(stream, "%s\n", result->segments[i].text);
-            }
-        }
-    }
-    if (options->format == FORMAT_JSON) {
-        fprintf(stream, "\n]\n");
-    }
 }
 
 int main(int argc, char **argv) {
 #ifdef _WIN32
     SetConsoleOutputCP(CP_UTF8);
+    if (!build_utf8_argv(&argc, &argv)) {
+        fprintf(stderr, "错误：无法解析命令行参数\n");
+        return 1;
+    }
 #endif
     cli_options options;
     memset(&options, 0, sizeof(options));
-    options.encoder_device = "NPU";
-    options.decoder_device = "CPU";
     options.language = "auto";
     options.format = FORMAT_TXT;
-    options.max_tokens = 224;
 
     const char **files = NULL;
     size_t file_count = 0;
@@ -484,11 +473,10 @@ int main(int argc, char **argv) {
         return 2;
     }
     const char *model_dir = options.model_dir;
+    char *env_model_dir = NULL;
     if (model_dir == NULL) {
-        const char *env_model_dir = getenv("NPUT_MODEL_DIR");
-        if (env_model_dir != NULL && env_model_dir[0] != '\0') {
-            model_dir = env_model_dir;
-        }
+        env_model_dir = read_env_utf8("NPUT_MODEL_DIR");
+        model_dir = env_model_dir;
     }
     char *discovered_model_dir = NULL;
     if (model_dir == NULL) {
@@ -502,10 +490,11 @@ int main(int argc, char **argv) {
         fprintf(stderr, "使用模型目录：%s\n", model_dir);
     }
 
-    int32_t language_token = nput_asr_language_token(options.language);
-    if (language_token < 0 && strcmp(options.language, "auto") != 0 &&
+    int32_t requested_language = nput_asr_language_token(options.language);
+    if (requested_language < 0 && strcmp(options.language, "auto") != 0 &&
         strcmp(options.language, "detect") != 0) {
         fprintf(stderr, "错误：未知语言 '%s'\n", options.language);
+        free(env_model_dir);
         free(discovered_model_dir);
         return 2;
     }
@@ -513,6 +502,7 @@ int main(int argc, char **argv) {
     if (options.output != NULL && options.output[0] != '\0' &&
         nput_create_parent_dirs(options.output) != NPUT_OK) {
         fprintf(stderr, "错误：无法创建输出目录：%s\n", options.output);
+        free(env_model_dir);
         free(discovered_model_dir);
         return 1;
     }
@@ -521,22 +511,32 @@ int main(int argc, char **argv) {
     nput_asr_options_init(&asr_options);
     asr_options.model_dir = model_dir;
     asr_options.vocab_path = options.vocab_path;
-    asr_options.encoder_device = options.encoder_device;
-    asr_options.decoder_device = options.decoder_device;
+    if (options.encoder_device != NULL) {
+        asr_options.encoder_device = options.encoder_device;
+    }
+    if (options.decoder_device != NULL) {
+        asr_options.decoder_device = options.decoder_device;
+    }
     asr_options.cache_dir = options.cache_dir;
-    asr_options.max_tokens = options.max_tokens;
+    if (options.max_tokens > 0) {
+        asr_options.max_tokens = options.max_tokens;
+    }
     asr_options.verbose = options.verbose;
 
     nput_asr *asr = NULL;
+    nput_clear_error();
     nput_status status = nput_asr_create(&asr_options, &asr);
     if (status != NPUT_OK) {
         fprintf(stderr, "错误：无法初始化识别器：%s\n", nput_status_string(status));
+        print_error_detail();
+        free(env_model_dir);
         free(discovered_model_dir);
         return 1;
     }
 
     file_result *results = (file_result *)calloc(file_count, sizeof(file_result));
     if (results == NULL) {
+        free(env_model_dir);
         free(discovered_model_dir);
         nput_asr_destroy(asr);
         return 1;
@@ -545,6 +545,8 @@ int main(int argc, char **argv) {
     size_t completed = 0;
     int exit_code = 0;
     for (size_t i = 0; i < file_count; ++i) {
+        /* 自动检测按文件独立进行，避免混合语言批次复用首个文件的结果。 */
+        int32_t language_token = requested_language;
         status = transcribe_file(asr, &options, files[i], &language_token, &results[completed]);
         if (status != NPUT_OK) {
             exit_code = 1;
@@ -554,19 +556,22 @@ int main(int argc, char **argv) {
 
     FILE *stream = stdout;
     if (options.output != NULL && options.output[0] != '\0') {
-        stream = fopen(options.output, "wb");
+        stream = nput_file_open(options.output, "wb");
         if (stream == NULL) {
             fprintf(stderr, "错误：无法写入 %s\n", options.output);
             exit_code = 1;
         }
     }
     if (stream != NULL) {
-        write_results(stream, &options, results, completed);
-        if (stream != stdout) {
-            if (ferror(stream) != 0 || fclose(stream) != 0) {
-                fprintf(stderr, "错误：写入 %s 失败\n", options.output);
+        cli_write_results(stream, options.format, results, completed);
+        if (stream == stdout) {
+            if (fflush(stream) != 0 || ferror(stream) != 0) {
+                fprintf(stderr, "错误：写入标准输出失败\n");
                 exit_code = 1;
             }
+        } else if (ferror(stream) != 0 || fclose(stream) != 0) {
+            fprintf(stderr, "错误：写入 %s 失败\n", options.output);
+            exit_code = 1;
         }
     }
 
@@ -578,6 +583,7 @@ int main(int argc, char **argv) {
     }
     free(results);
     nput_asr_destroy(asr);
+    free(env_model_dir);
     free(discovered_model_dir);
     return exit_code;
 }

@@ -1,6 +1,6 @@
 #include <stdint.h>
 
-#include "nput/trigram.h"
+#include "text/trigram.h"
 #include "unity.h"
 
 void setUp(void) {}
