@@ -78,15 +78,32 @@ set_target_properties(nput_openvino PROPERTIES
 message(STATUS "OpenVINO runtime: ${OPENVINO_ROOT}")
 
 # 把 OpenVINO 运行时复制到可执行文件旁边，运行时无需配置 PATH。
+#
+# 多个目标共享同一个输出目录，并行 POST_BUILD 同时写同一个 DLL 会触发
+# Permission denied。因此只创建一个按输出目录去重的共享目标，其余目标依赖它。
 function(nput_install_runtime_dlls target)
     if(NOT WIN32)
         return()
     endif()
-    file(GLOB _nput_ov_dlls "${OPENVINO_LIBS_DIR}/*.dll")
-    add_custom_command(TARGET ${target} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${_nput_ov_dlls}
-                "$<TARGET_FILE_DIR:${target}>"
-        COMMENT "Copying OpenVINO runtime DLLs next to ${target}"
-        VERBATIM
-    )
+    if(TARGET ${target})
+        get_target_property(_nput_out_dir ${target} RUNTIME_OUTPUT_DIRECTORY)
+    endif()
+    if(NOT _nput_out_dir)
+        set(_nput_out_dir "${CMAKE_BINARY_DIR}/bin")
+    endif()
+    string(MAKE_C_IDENTIFIER "${_nput_out_dir}" _nput_out_id)
+    set(_nput_copy_target "nput_openvino_runtime_${_nput_out_id}")
+    if(NOT TARGET ${_nput_copy_target})
+        file(GLOB _nput_ov_dlls "${OPENVINO_LIBS_DIR}/*.dll")
+        add_custom_target(${_nput_copy_target}
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${_nput_out_dir}"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${_nput_ov_dlls}
+                    "${_nput_out_dir}"
+            COMMENT "Copying OpenVINO runtime DLLs to ${_nput_out_dir}"
+            VERBATIM
+        )
+    endif()
+    if(TARGET ${target})
+        add_dependencies(${target} ${_nput_copy_target})
+    endif()
 endfunction()
