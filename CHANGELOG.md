@@ -3,17 +3,19 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.3.1] - 2026-10-20
 
 ### 修复
 
 - Media Foundation 解码低采样率 AAC（16 kHz、22.05 kHz）时被标成 2 倍采样率的立体声，
-  音频被拉伸为 1/4 时长；现在沿用源流的采样率与声道数。
+  音频被拉伸为 1/4 时长；现在沿用源流的采样率与声道数。8/16/22.05/32/44.1/48 kHz 均已验证。
 
 ### 变更
 
 - Whisper 后端不再固定 `d_model=512`：支持 `whisper-small`（768）与 `whisper-medium`（1024）；
   `large-v3` 需要 128 维 mel 输入，暂不支持。
+- CLI 调试配置改用 CodeLLDB（lldb），避免 Windows 下 gdb 按 ANSI 代码页编码非 ASCII 参数；
+  Unity 测试与附加进程仍使用 gdb。
 
 ## [0.3.0] - 2026-10-20
 
