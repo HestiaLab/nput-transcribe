@@ -1,5 +1,5 @@
 #if !defined(_WIN32) && !defined(_XOPEN_SOURCE)
-#define _XOPEN_SOURCE 700
+#define _XOPEN_SOURCE 700  // NOLINT(bugprone-reserved-identifier)：POSIX 特性测试宏
 #endif
 
 #include "nput/model.h"
@@ -368,17 +368,30 @@ nput_status nput_create_parent_dirs(const char *utf8_path) {
     return status;
 }
 
+/* 拼接目录与名称；超出容量时返回 0，由调用方跳过该项。 */
+static int nput_join_path(char *out, size_t size, const char *directory, const char *name) {
+    const size_t directory_length = strlen(directory);
+    const size_t name_length = strlen(name);
+    if (directory_length + name_length + 2 > size) {
+        return 0;
+    }
+    memcpy(out, directory, directory_length);
+    out[directory_length] = '/';
+    memcpy(out + directory_length + 1, name, name_length);
+    out[directory_length + 1 + name_length] = '\0';
+    return 1;
+}
+
 static int nput_posix_has_model(const char *directory) {
     static const char *const names[] = {
-        "/openvino_encoder_model.xml",
-        "/openvino_decoder_model.xml",
-        "/vocab.json",
+        "openvino_encoder_model.xml",
+        "openvino_decoder_model.xml",
+        "vocab.json",
     };
     char path[NPUT_PATH_CHARS];
     struct stat info;
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); ++i) {
-        if (snprintf(path, sizeof(path), "%s%s", directory, names[i]) <= 0 ||
-            stat(path, &info) != 0) {
+        if (!nput_join_path(path, sizeof(path), directory, names[i]) || stat(path, &info) != 0) {
             return 0;
         }
     }
@@ -395,7 +408,7 @@ static nput_status nput_consider_posix_dir(const char *directory, nput_posix_can
     char path[NPUT_PATH_CHARS];
     struct stat info;
     if (!nput_posix_has_model(directory) ||
-        snprintf(path, sizeof(path), "%s/openvino_encoder_model.xml", directory) <= 0 ||
+        !nput_join_path(path, sizeof(path), directory, "openvino_encoder_model.xml") ||
         stat(path, &info) != 0) {
         return NPUT_OK;
     }
@@ -441,11 +454,14 @@ static nput_status nput_collect_models(nput_posix_candidate **out_items, size_t 
     root[0] = '\0';
     const char *hf_home = getenv("HF_HOME");
     if (hf_home != NULL && hf_home[0] != '\0') {
-        snprintf(root, sizeof(root), "%s/hub", hf_home);
+        (void)nput_join_path(root, sizeof(root), hf_home, "hub");
     } else {
         const char *home = getenv("HOME");
         if (home != NULL) {
-            snprintf(root, sizeof(root), "%s/.cache/huggingface/hub", home);
+            char cache[NPUT_PATH_CHARS];
+            if (nput_join_path(cache, sizeof(cache), home, ".cache/huggingface")) {
+                (void)nput_join_path(root, sizeof(root), cache, "hub");
+            }
         }
     }
 
@@ -457,8 +473,12 @@ static nput_status nput_collect_models(nput_posix_candidate **out_items, size_t 
                 strstr(entry->d_name, "whisper") == NULL) {
                 continue;
             }
+            char model_dir[NPUT_PATH_CHARS];
             char snapshots[NPUT_PATH_CHARS];
-            snprintf(snapshots, sizeof(snapshots), "%s/%s/snapshots", root, entry->d_name);
+            if (!nput_join_path(model_dir, sizeof(model_dir), root, entry->d_name) ||
+                !nput_join_path(snapshots, sizeof(snapshots), model_dir, "snapshots")) {
+                continue;
+            }
             DIR *snapshot_dir = opendir(snapshots);
             if (snapshot_dir == NULL) {
                 continue;
@@ -469,7 +489,10 @@ static nput_status nput_collect_models(nput_posix_candidate **out_items, size_t 
                     continue;
                 }
                 char candidate[NPUT_PATH_CHARS];
-                snprintf(candidate, sizeof(candidate), "%s/%s", snapshots, snapshot->d_name);
+                if (!nput_join_path(candidate, sizeof(candidate), snapshots,
+                                    snapshot->d_name)) {
+                    continue;
+                }
                 const nput_status candidate_status =
                     nput_consider_posix_dir(candidate, &items, &count, &capacity);
                 if (candidate_status != NPUT_OK) {
@@ -486,7 +509,9 @@ static nput_status nput_collect_models(nput_posix_candidate **out_items, size_t 
     }
 
     if (status == NPUT_OK) {
-        qsort(items, count, sizeof(nput_posix_candidate), nput_compare_posix_candidates);
+        if (count > 1) {
+            qsort(items, count, sizeof(nput_posix_candidate), nput_compare_posix_candidates);
+        }
         *out_items = items;
         *out_count = count;
         return NPUT_OK;

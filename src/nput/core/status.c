@@ -49,6 +49,7 @@ void nput_clear_error(void) {
 void nput_set_error(const char *format, ...) {
     va_list arguments;
     va_start(arguments, format);
+    // NOLINTNEXTLINE(clang-analyzer-valist.Uninitialized)：va_start 就在上方，LLVM 18 的 analyzer 无法建模
     vsnprintf(nput_error_message, sizeof(nput_error_message), format, arguments);
     va_end(arguments);
 }

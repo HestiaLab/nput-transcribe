@@ -44,6 +44,7 @@ static int matches(const char *argument, const char *name, const char *alias) {
 static int fail(cli_arguments *out, const char *format, ...) {
     va_list args;
     va_start(args, format);
+    // NOLINTNEXTLINE(clang-analyzer-valist.Uninitialized)：va_start 就在上方，LLVM 18 的 analyzer 无法建模
     (void)vsnprintf(out->error, sizeof(out->error), format, args);
     va_end(args);
     out->action = CLI_ACTION_ERROR;
