@@ -19,6 +19,8 @@ env:
   OPENVINO_VERSION: "2026.4.1"
   # 非 ASan 二进制会忽略该变量。
   ASAN_OPTIONS: detect_leaks=1
+  # 未定义行为立即失败；-fno-sanitize-recover=all 已在编译期保证。
+  UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
 
 jobs:
   windows:
@@ -76,10 +78,11 @@ jobs:
           - name: Clang, Release
             cc: clang
             build_type: Release
-          - name: GCC, Debug + ASan
+          - name: GCC, Debug + ASan/UBSan
             cc: gcc
             build_type: Debug
             asan: ON
+            ubsan: ON
     steps:
       - uses: actions/checkout@v4
 
@@ -106,9 +109,48 @@ jobs:
           -DCMAKE_C_COMPILER=${{ matrix.cc }}
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
           -DNPUT_ENABLE_ASAN=${{ matrix.asan || 'OFF' }}
+          -DNPUT_ENABLE_UBSAN=${{ matrix.ubsan || 'OFF' }}
 
       - name: Build
         run: cmake --build build/ci
 
       - name: Test
         run: ctest --test-dir build/ci --output-on-failure
+
+  tidy:
+    name: Linux x64 (clang-tidy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install OpenVINO runtime
+        run: |
+          python -m pip install --disable-pip-version-check "openvino==${OPENVINO_VERSION}"
+          echo "OPENVINO_ROOT=$(python -c 'import openvino, os; print(os.path.dirname(openvino.__file__))')" >> "$GITHUB_ENV"
+
+      - name: Install Ninja and clang-tidy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build clang-tidy
+
+      # 只需要 compile_commands.json，不必构建。
+      - name: Configure
+        run: >-
+          cmake -S . -B build/tidy -G Ninja
+          -DCMAKE_C_COMPILER=gcc
+          -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Run clang-tidy
+        run: |
+          mapfile -t files < <(git ls-files 'src' | grep '\.c$')
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "src 下未找到 C 源文件" >&2
+            exit 1
+          fi
+          clang-tidy --version
+          clang-tidy -p build/tidy --quiet --warnings-as-errors='*' "${files[@]}"
