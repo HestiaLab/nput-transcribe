@@ -105,6 +105,26 @@ clang-tidy -p build/debug --quiet --warnings-as-errors='*' `
   UBSan 运行时，Windows 上需改用 `C:/msys64/clang64/bin/clang.exe` 构建；
   CI 的 Linux Debug 任务同时开启两者。
 
+## 端到端等价性基线
+
+推理路径的结构改动必须证明「输出不变」，而不是「看起来等价」。基线放在仓库外，
+避免把音频与模型快照塞进版本库：
+
+1. 用固定文本合成一段 20–30 s 语音（Windows 可用 `System.Speech`，音色
+   `Microsoft Huihui Desktop`，48 kHz / 16-bit / 立体声），再用 ffmpeg 转一份 MP3，
+   以覆盖 Media Foundation 解码路径。
+2. 记录音频与输出的 SHA256，并注明模型：`whisper-base-int8-ov` 覆盖主干，
+   `whisper-medium-int8-ov` 覆盖 `d_model=1024`。
+3. 改动前后各跑一次：
+
+   ```powershell
+   $exe -m <model> --cache-dir <baseline>\npu-cache -f json -o out.json input.wav
+   ```
+
+4. 判定：JSON 逐字节相同。耗时不作为判据，NPU 首次编译 20–30 s 属正常。
+
+基线只证明前后一致，不证明转写质量；质量回归仍需真实语料。
+
 ## 代码风格
 
 - C11；`clang-format` 与 `clang-tidy` 配置在仓库根目录。
