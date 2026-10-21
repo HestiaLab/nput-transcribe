@@ -30,6 +30,7 @@ set(CMAKE_C_EXTENSIONS OFF)
 option(NPUT_BUILD_CLI "Build the nput-transcribe executable" ${NPUT_IS_TOP_LEVEL})
 option(NPUT_BUILD_TESTING "Build CTest tests" ${NPUT_IS_TOP_LEVEL})
 option(NPUT_ENABLE_ASAN "Enable AddressSanitizer where supported" OFF)
+option(NPUT_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer where supported" OFF)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerOptions.cmake")
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/OpenVINO.cmake")
