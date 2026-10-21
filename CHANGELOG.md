@@ -12,6 +12,10 @@
 - CI：新增 `clang-tidy` 任务，扫描 `src/`，出现诊断即失败。
 - `cli_json_escape` 的 UTF-8 长度判断改为显式携带剩余长度，`nput_asr_devices` 不再使用
   `strcat`，`nput_tokenizer_load` 用带返回检查的 `fseek` 替代 `rewind`；均无行为变化。
+- CLI 参数解析从 `main.c` 移到 `cli_args.c`：带值选项改为表驱动，解析器只返回动作与错误
+  文本，不再在解析中直接打印或退出；新增 13 个解析用例，参数、错误文本与退出码不变。
+- Whisper 后端抽出 `read_model`、`compile_model` 与 `read_logits`，消除重复的模型加载与
+  logits 校验分支；三个基线（base WAV/MP3、medium WAV）输出逐字节一致。
 
 ## [0.3.1] - 2026-10-20
 
