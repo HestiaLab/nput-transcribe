@@ -189,7 +189,7 @@ static int append_byte(nput_tokenizer *tokenizer, uint8_t byte) {
 static nput_status store_token(nput_tokenizer *tokenizer, const int32_t *codepoints, size_t count,
                                int64_t id) {
     if (id < 0 || id >= NPUT_TOKENIZER_MAX_ID) {
-        return NPUT_OK;
+        return NPUT_ERR_FORMAT;
     }
     const size_t start = tokenizer->bytes_length;
     for (size_t i = 0; i < count; ++i) {
@@ -291,9 +291,17 @@ nput_status nput_tokenizer_load(const char *vocab_json_path, nput_tokenizer **ou
         int64_t id = 0;
         int digits = 0;
         while (cursor < end && *cursor >= '0' && *cursor <= '9') {
-            id = id * 10 + (*cursor - '0');
+            const int digit = *cursor - '0';
+            if (id > (INT64_MAX - digit) / 10) {
+                status = NPUT_ERR_FORMAT;
+                break;
+            }
+            id = id * 10 + digit;
             ++cursor;
             ++digits;
+        }
+        if (status != NPUT_OK) {
+            break;
         }
         if (digits == 0) {
             status = NPUT_ERR_FORMAT;

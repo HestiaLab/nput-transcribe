@@ -7,8 +7,9 @@
 #include "nput/status.h"
 #include "unity.h"
 
-/* 下列数值由 transformers 的 WhisperFeatureExtractor 生成，用于锁定
-   窗函数、填充、滤波器组与归一化。 */
+/* 下列数值由 transformers 5.20.1 的 WhisperFeatureExtractor(feature_size=80)
+   以 numpy 后端生成（return_tensors="np"），输入为 build_tone 生成的同一信号；
+   未使用本仓库输出反向生成。 */
 typedef struct mel_reference {
     int bin;
     int frame;
@@ -18,6 +19,13 @@ typedef struct mel_reference {
 static const mel_reference REFERENCES[] = {
     {0, 0, 0.983279f},  {1, 0, 0.986621f},   {10, 1500, 1.348741f}, {79, 0, -0.081692f},
     {5, 10, -0.561789f}, {20, 100, -0.561789f}, {79, 2999, -0.561789f},
+    {20, 1599, 0.179226f}, {20, 1600, 0.667385f}, {20, 1601, 0.179226f},
+    {20, 1602, -0.561796f},
+};
+
+static const mel_reference SHORT_REFERENCES[] = {
+    {0, 0, 0.971646f},  {20, 0, 0.823372f}, {79, 0, -0.057127f},
+    {20, 1, 0.743316f}, {20, 10, -0.663211f}, {79, 2999, -0.663211f},
 };
 
 static void build_tone(float *samples, size_t count) {
@@ -69,10 +77,24 @@ static void test_mel_pads_short_input(void) {
     nput_mel_free(&mel);
 }
 
+static void test_mel_short_input_matches_reference(void) {
+    float samples[160];
+    build_tone(samples, 160);
+    nput_mel mel;
+    TEST_ASSERT_EQUAL(NPUT_OK, nput_mel_compute(samples, 160, &mel));
+    for (size_t i = 0; i < sizeof(SHORT_REFERENCES) / sizeof(SHORT_REFERENCES[0]); ++i) {
+        const float actual = mel.data[(size_t)SHORT_REFERENCES[i].bin * NPUT_MEL_FRAMES +
+                                      (size_t)SHORT_REFERENCES[i].frame];
+        TEST_ASSERT_FLOAT_WITHIN(0.002f, SHORT_REFERENCES[i].expected, actual);
+    }
+    nput_mel_free(&mel);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_mel_matches_reference);
     RUN_TEST(test_mel_rejects_null);
     RUN_TEST(test_mel_pads_short_input);
+    RUN_TEST(test_mel_short_input_matches_reference);
     return UNITY_END();
 }

@@ -125,21 +125,21 @@ typedef struct nput_model_candidate {
 } nput_model_candidate;
 
 /* 记录包含完整 IR 的目录。 */
-static int nput_consider_model_dir(const wchar_t *directory, nput_model_candidate **items,
-                                   size_t *count, size_t *capacity) {
+static nput_status nput_consider_model_dir(const wchar_t *directory, nput_model_candidate **items,
+                                           size_t *count, size_t *capacity) {
     wchar_t probe[NPUT_PATH_CHARS];
     WIN32_FILE_ATTRIBUTE_DATA data;
     if (!nput_wide_has_model(directory) ||
         !nput_join_wide(probe, NPUT_PATH_CHARS, directory, L"\\openvino_encoder_model.xml") ||
         !GetFileAttributesExW(probe, GetFileExInfoStandard, &data)) {
-        return 0;
+        return NPUT_OK;
     }
     if (*count == *capacity) {
         const size_t wanted = *capacity == 0 ? 8 : *capacity * 2;
         nput_model_candidate *grown =
             (nput_model_candidate *)realloc(*items, wanted * sizeof(nput_model_candidate));
         if (grown == NULL) {
-            return 0;
+            return NPUT_ERR_OUT_OF_MEMORY;
         }
         *items = grown;
         *capacity = wanted;
@@ -147,13 +147,13 @@ static int nput_consider_model_dir(const wchar_t *directory, nput_model_candidat
     const size_t length = wcslen(directory);
     wchar_t *copy = (wchar_t *)malloc((length + 1) * sizeof(wchar_t));
     if (copy == NULL) {
-        return 0;
+        return NPUT_ERR_OUT_OF_MEMORY;
     }
     memcpy(copy, directory, (length + 1) * sizeof(wchar_t));
     (*items)[*count].path = copy;
     (*items)[*count].time = data.ftLastWriteTime;
     ++(*count);
-    return 1;
+    return NPUT_OK;
 }
 
 static int nput_compare_candidates(const void *left, const void *right) {
@@ -162,13 +162,15 @@ static int nput_compare_candidates(const void *left, const void *right) {
     return CompareFileTime(&b->time, &a->time); /* 新的在前 */
 }
 
-static size_t nput_collect_models(nput_model_candidate **out_items) {
+static void nput_free_candidates(nput_model_candidate *items, size_t count);
+
+static nput_status nput_collect_models(nput_model_candidate **out_items, size_t *out_count) {
     nput_model_candidate *items = NULL;
     size_t count = 0;
     size_t capacity = 0;
 
     /* 1. 当前目录下的 ./models。 */
-    nput_consider_model_dir(L"models", &items, &count, &capacity);
+    nput_status status = nput_consider_model_dir(L"models", &items, &count, &capacity);
 
     /* 2. Hugging Face 缓存：<HF_HOME>/hub 或 ~/.cache/huggingface/hub。 */
     wchar_t root[NPUT_PATH_CHARS];
@@ -184,13 +186,14 @@ static size_t nput_collect_models(nput_model_candidate **out_items) {
     }
 
     wchar_t pattern[NPUT_PATH_CHARS];
-    if (root[0] != L'\0' &&
+    if (status == NPUT_OK && root[0] != L'\0' &&
         nput_join_wide(pattern, NPUT_PATH_CHARS, root, L"\\models--*whisper*")) {
         WIN32_FIND_DATAW model_entry;
         HANDLE models = FindFirstFileW(pattern, &model_entry);
         if (models != INVALID_HANDLE_VALUE) {
             do {
-                if ((model_entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+                if (status != NPUT_OK ||
+                    (model_entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
                     continue;
                 }
                 wchar_t model_dir[NPUT_PATH_CHARS];
@@ -205,24 +208,30 @@ static size_t nput_collect_models(nput_model_candidate **out_items) {
                     continue;
                 }
                 do {
-                    if ((snapshot_entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+                    if (status != NPUT_OK ||
+                        (snapshot_entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
                         continue;
                     }
                     wchar_t snapshot_dir[NPUT_PATH_CHARS];
                     if (nput_join_wide3(snapshot_dir, NPUT_PATH_CHARS, model_dir, L"\\snapshots\\",
                                         snapshot_entry.cFileName)) {
-                        nput_consider_model_dir(snapshot_dir, &items, &count, &capacity);
+                        status = nput_consider_model_dir(snapshot_dir, &items, &count, &capacity);
                     }
-                } while (FindNextFileW(snapshots, &snapshot_entry));
+                } while (status == NPUT_OK && FindNextFileW(snapshots, &snapshot_entry));
                 FindClose(snapshots);
-            } while (FindNextFileW(models, &model_entry));
+            } while (status == NPUT_OK && FindNextFileW(models, &model_entry));
             FindClose(models);
         }
     }
 
+    if (status != NPUT_OK) {
+        nput_free_candidates(items, count);
+        return status;
+    }
     qsort(items, count, sizeof(nput_model_candidate), nput_compare_candidates);
     *out_items = items;
-    return count;
+    *out_count = count;
+    return NPUT_OK;
 }
 
 static void nput_free_candidates(nput_model_candidate *items, size_t count) {
@@ -256,10 +265,10 @@ nput_status nput_find_default_model_dir(char **out_path) {
     *out_path = NULL;
 
     nput_model_candidate *items = NULL;
-    const size_t count = nput_collect_models(&items);
-    nput_status status = NPUT_ERR_UNSUPPORTED;
-    if (count > 0) {
-        status = nput_wide_to_utf8(items[0].path, out_path);
+    size_t count = 0;
+    nput_status status = nput_collect_models(&items, &count);
+    if (status == NPUT_OK) {
+        status = count > 0 ? nput_wide_to_utf8(items[0].path, out_path) : NPUT_ERR_UNSUPPORTED;
     }
     nput_free_candidates(items, count);
     return status;
@@ -272,7 +281,11 @@ nput_status nput_list_model_dirs(char **out_lines) {
     *out_lines = NULL;
 
     nput_model_candidate *items = NULL;
-    const size_t count = nput_collect_models(&items);
+    size_t count = 0;
+    nput_status status = nput_collect_models(&items, &count);
+    if (status != NPUT_OK) {
+        return status;
+    }
     if (count == 0) {
         nput_free_candidates(items, count);
         return NPUT_ERR_UNSUPPORTED;
@@ -284,7 +297,6 @@ nput_status nput_list_model_dirs(char **out_lines) {
         return NPUT_ERR_OUT_OF_MEMORY;
     }
     size_t total = 1;
-    nput_status status = NPUT_OK;
     for (size_t i = 0; i < count; ++i) {
         status = nput_wide_to_utf8(items[i].path, &encoded[i]);
         if (status != NPUT_OK) {

@@ -184,20 +184,25 @@ static int parse_arguments(int argc, char **argv, cli_options *options, const ch
             exit(0);
         }
         if (strcmp(argument, "--list-models") == 0) {
+            char *env_model_dir = read_env_utf8("NPUT_MODEL_DIR");
             char *lines = NULL;
-            if (nput_list_model_dirs(&lines) != NPUT_OK) {
+            const nput_status listed = nput_list_model_dirs(&lines);
+            if (listed != NPUT_OK &&
+                !(listed == NPUT_ERR_UNSUPPORTED && env_model_dir != NULL)) {
                 fprintf(stderr, "错误：未找到模型目录\n");
+                free(env_model_dir);
                 exit(1);
             }
-            char *env_model_dir = read_env_utf8("NPUT_MODEL_DIR");
             if (env_model_dir != NULL) {
                 printf("%s\n", env_model_dir);
             }
-            for (char *line = strtok(lines, "\n"); line != NULL; line = strtok(NULL, "\n")) {
-                if (env_model_dir != NULL && strcmp(line, env_model_dir) == 0) {
-                    continue;
+            if (listed == NPUT_OK) {
+                for (char *line = strtok(lines, "\n"); line != NULL; line = strtok(NULL, "\n")) {
+                    if (env_model_dir != NULL && strcmp(line, env_model_dir) == 0) {
+                        continue;
+                    }
+                    printf("%s\n", line);
                 }
-                printf("%s\n", line);
             }
             free(env_model_dir);
             nput_free(lines);
@@ -569,9 +574,13 @@ int main(int argc, char **argv) {
                 fprintf(stderr, "错误：写入标准输出失败\n");
                 exit_code = 1;
             }
-        } else if (ferror(stream) != 0 || fclose(stream) != 0) {
-            fprintf(stderr, "错误：写入 %s 失败\n", options.output);
-            exit_code = 1;
+        } else {
+            const int write_failed = ferror(stream) != 0;
+            const int close_failed = fclose(stream) != 0;
+            if (write_failed || close_failed) {
+                fprintf(stderr, "错误：写入 %s 失败\n", options.output);
+                exit_code = 1;
+            }
         }
     }
 

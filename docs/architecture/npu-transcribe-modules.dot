@@ -1,0 +1,92 @@
+// npu-transcribe 当前状态：子系统级模块依赖图
+// 文件级细节见 npu-transcribe.structurizr.dsl 与 system-model.evidence.md
+// 实线 = 依赖（编译期或链接）；点线 = 实现公共契约；虚线 = 平台条件
+// 渲染：dot -Tsvg npu-transcribe-modules.dot -o npu-transcribe-modules.svg
+digraph module_map {
+    graph [
+        rankdir=TB,
+        newrank=true,
+        fontname="Microsoft YaHei",
+        fontsize=14,
+        labelloc="t",
+        label="npu-transcribe 模块依赖（当前状态）\n实线 = 依赖（编译期或链接）；点线 = 实现公共契约；虚线 = 平台条件",
+        nodesep=0.4,
+        ranksep=0.55,
+        compound=true,
+        bgcolor="white"
+    ];
+    node [
+        fontname="Microsoft YaHei",
+        fontsize=10,
+        shape=box,
+        style="rounded,filled",
+        fillcolor="#eef3f8",
+        color="#5b7c99",
+        penwidth=1.0,
+        margin="0.14,0.08"
+    ];
+    edge [
+        fontname="Microsoft YaHei",
+        fontsize=9,
+        color="#34506b",
+        fontcolor="#243b53",
+        arrowsize=0.8
+    ];
+
+    cli [label="CLI 可执行文件（src/）\nmain.c · cli_args.c · cli_output.c", fillcolor="#dce9f5", width=3.2];
+
+    api [shape=note, fillcolor="#e8f2e8", color="#4f7a4f", width=4.2,
+         label="公共契约 include/nput（PUBLIC）\nasr.h · audio.h · mel.h · model.h\npath.h · segment.h · status.h · tokenizer.h · export.h"];
+
+    subgraph cluster_corelib {
+        label="nput_core 库（src/nput，默认静态库）";
+        fontname="Microsoft YaHei";
+        fontsize=11;
+        color="#9fb3c8";
+        style="rounded";
+
+        core_hub [style=invis, width=0.01, height=0.01, label=""];
+
+        asr [label="ASR 子系统\nasr.c · backend.h\nbackend_whisper.c · ov_runtime.c\n\n会话 / 后端注册 / IR 编译\n静态编码器 / 贪心解码循环", fillcolor="#fbf1dc", width=3.6];
+        audio [label="音频子系统\naudio.c · wav.c · media_foundation.c\nresample.c · segment.c · mel.c\n\n解码分发 / 重采样 / 分段 / log-mel", fillcolor="#e6e9fb", width=3.8];
+        text [label="文本子系统\ntokenizer.c · tokenizer_backend.h · trigram.h\n\nBPE 解码 / 3-gram 抑制", fillcolor="#f1e8fa", width=3.6];
+        platform [label="平台子系统\nplatform.c · clock.c\n\nUTF-8 路径 / 模型发现 / 单调时钟", fillcolor="#e4f2f2", width=3.2];
+        status [label="核心\nstatus.c\n\n状态码 / 线程局部错误", fillcolor="#f5ebe6", width=2.2];
+    }
+
+    subgraph cluster_external {
+        label="外部依赖";
+        fontname="Microsoft YaHei";
+        fontsize=11;
+        color="#8c8c8c";
+        style="rounded,dashed";
+        openvino [shape=component, fillcolor="#e6e6e6", color="#8c8c8c",
+                  label="OpenVINO Runtime\nopenvino_c C API\nNPU / CPU 推理"];
+        mediafoundation [shape=component, fillcolor="#e6e6e6", color="#8c8c8c",
+                         label="Windows Media Foundation\nmfplat / mfreadwrite / mfuuid / ole32"];
+    }
+
+    build_note [shape=note, fillcolor="#f4f4f4", color="#8c8c8c",
+                label="CMake 链接\nnput-transcribe → nput_core\nnput_core → OpenVINO（PRIVATE）\nWIN32 → Media Foundation\nUNIX → libm"];
+    tests_note [shape=folder, fillcolor="#f4f4f4", color="#8c8c8c",
+                label="验证：tests/ 11 个 Unity 目标\n+ API surface 检查 + CLI smoke\n由 ctest 运行"];
+
+    // CLI → 公共契约
+    cli -> api [label="只包含公共头\n链接 nput_core", penwidth=1.6];
+
+    // nput_core 整体实现公共契约（边从簇边界出发）
+    core_hub -> api [style=dotted, ltail=cluster_corelib, label="实现公共契约"];
+
+    // 子系统内部与跨子系统依赖
+    asr -> audio [label="nput_mel_compute"];
+    asr -> text [label="BPE 解码 / 3-gram"];
+    asr -> platform [label="单调时钟"];
+    asr -> status [label="错误详情"];
+    asr -> openvino [label="加载 / 编译 / 推理", penwidth=1.4];
+    audio -> platform [label="路径打开"];
+    audio -> mediafoundation [label="非 WAV（Windows）", style=dashed];
+
+    // 验证与构建说明
+    tests_note -> api [style=dotted, arrowhead=none, label="覆盖公共 API"];
+    build_note -> openvino [style=dotted, arrowhead=none];
+}

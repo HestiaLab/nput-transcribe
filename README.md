@@ -200,7 +200,7 @@ nput_asr_destroy(asr);
 ## VS Code
 
 - CMake Tools 已配置为预设模式：选择 `debug` / `release`，`F7` 构建，Test 按钮跑 ctest。
-- `F5` 用 gdb 调试 `build/debug/bin/nput-transcribe.exe`；模型与音频路径启动时输入。
+- `F5` 用 CodeLLDB 调试 `build/debug/bin/nput-transcribe.exe`；模型与音频路径启动时输入。
 - Debug 构建的频谱计算较慢，调试时建议使用 10 s 以内的音频。
 
 ## 目录

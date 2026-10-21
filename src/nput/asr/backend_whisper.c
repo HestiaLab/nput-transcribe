@@ -357,14 +357,56 @@ static nput_status decode_loop(struct whisper_backend *asr, ov_tensor_t *hidden,
             goto cleanup;
         }
         ov_shape_t logits_shape;
-        if (ov_tensor_get_shape(logits, &logits_shape) != OK || logits_shape.rank != 3) {
+        if (!openvino_step(ov_tensor_get_shape(logits, &logits_shape), "读取 logits 形状")) {
             ov_tensor_free(logits);
             goto cleanup;
         }
+        if (logits_shape.rank != 3) {
+            nput_set_error("OpenVINO：logits 维度不是 3（实际为 %d）", (int)logits_shape.rank);
+            ov_shape_free(&logits_shape);
+            ov_tensor_free(logits);
+            result = NPUT_ERR_UNSUPPORTED;
+            goto cleanup;
+        }
+        if (logits_shape.dims[0] != 1 || logits_shape.dims[1] != 1) {
+            nput_set_error("OpenVINO：logits 形状不是 1x1xV（dims[0]=%lld，dims[1]=%lld）",
+                           (long long)logits_shape.dims[0], (long long)logits_shape.dims[1]);
+            ov_shape_free(&logits_shape);
+            ov_tensor_free(logits);
+            result = NPUT_ERR_UNSUPPORTED;
+            goto cleanup;
+        }
         const int64_t vocabulary = logits_shape.dims[2];
+        if (vocabulary <= 0 || vocabulary > INT32_MAX) {
+            nput_set_error("OpenVINO：logits 形状不是 1x1xV（dims[2]=%lld）", (long long)vocabulary);
+            ov_shape_free(&logits_shape);
+            ov_tensor_free(logits);
+            result = NPUT_ERR_UNSUPPORTED;
+            goto cleanup;
+        }
         ov_shape_free(&logits_shape);
+        ov_element_type_e logits_type = DYNAMIC;
+        if (!openvino_step(ov_tensor_get_element_type(logits, &logits_type),
+                           "读取 logits 元素类型")) {
+            ov_tensor_free(logits);
+            result = NPUT_ERR_RUNTIME;
+            goto cleanup;
+        }
+        if (logits_type != F32) {
+            nput_set_error("OpenVINO：logits 元素类型不是 F32（实际为 %d）", (int)logits_type);
+            ov_tensor_free(logits);
+            result = NPUT_ERR_UNSUPPORTED;
+            goto cleanup;
+        }
         void *raw = NULL;
-        if (ov_tensor_data(logits, &raw) != OK || raw == NULL) {
+        const ov_status_e data_status = ov_tensor_data(logits, &raw);
+        if (data_status != OK) {
+            nput_set_error("OpenVINO：读取 logits 数据失败（状态码 %d）", (int)data_status);
+            ov_tensor_free(logits);
+            goto cleanup;
+        }
+        if (raw == NULL) {
+            nput_set_error("OpenVINO：读取 logits 数据返回空指针");
             ov_tensor_free(logits);
             goto cleanup;
         }

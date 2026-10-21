@@ -72,7 +72,8 @@ nput_status NPUT_API nput_asr_devices(char **out_csv);
  *
  * 这是 Whisper 的兼容辅助函数，不随会话后端变化。
  *
- * @param code 两个字母的代码，如 "en"、"zh"；NULL 或 "auto" 表示自动检测。
+ * @param code 语言代码（通常为 ISO 639-1 的两个字母，少数为三个字母，如 "haw"）；
+ *             NULL 或 "auto" 表示自动检测。
  * @return token id；NULL、"auto" 或未知代码返回 -1（其中 "auto" 表示运行时检测）。
  */
 int32_t NPUT_API nput_asr_language_token(const char *code);

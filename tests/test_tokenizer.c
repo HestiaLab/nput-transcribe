@@ -71,11 +71,40 @@ static void test_missing_vocabulary(void) {
     TEST_ASSERT_NULL(tokenizer);
 }
 
+static nput_status load_vocab_text_expect_failure(const char *json) {
+    const char *path = "nput_test_vocab_bad.json";
+    FILE *file = fopen(path, "wb");
+    TEST_ASSERT_NOT_NULL(file);
+    fwrite(json, 1, strlen(json), file);
+    fclose(file);
+
+    nput_tokenizer *tokenizer = NULL;
+    const nput_status status = nput_tokenizer_load(path, &tokenizer);
+    remove(path);
+    TEST_ASSERT_NULL(tokenizer);
+    return status;
+}
+
+static void test_rejects_overflowing_token_id(void) {
+    /* 18446744073709551617 在 64 位有符号累乘中回绕为 1。 */
+    TEST_ASSERT_EQUAL(NPUT_ERR_FORMAT,
+                      load_vocab_text_expect_failure("{\"a\":0,\"b\":18446744073709551617}"));
+    TEST_ASSERT_EQUAL(NPUT_ERR_FORMAT,
+                      load_vocab_text_expect_failure("{\"a\":0,\"b\":9223372036854775808}"));
+}
+
+static void test_rejects_out_of_range_token_id(void) {
+    TEST_ASSERT_EQUAL(NPUT_ERR_FORMAT,
+                      load_vocab_text_expect_failure("{\"a\":0,\"b\":65536}"));
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_decode_byte_level_tokens);
     RUN_TEST(test_decode_skips_special_tokens);
     RUN_TEST(test_decode_empty);
     RUN_TEST(test_missing_vocabulary);
+    RUN_TEST(test_rejects_overflowing_token_id);
+    RUN_TEST(test_rejects_out_of_range_token_id);
     return UNITY_END();
 }

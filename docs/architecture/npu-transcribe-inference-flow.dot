@@ -1,0 +1,135 @@
+// npu-transcribe 当前状态：单文件转写流水线（音频 → 文本）
+// 证据：src/main.c:362-459、src/nput/asr/backend_whisper.c:238-604
+// 渲染：dot -Tsvg npu-transcribe-inference-flow.dot -o npu-transcribe-inference-flow.svg
+digraph inference_flow {
+    graph [
+        rankdir=TB,
+        newrank=true,
+        fontname="Microsoft YaHei",
+        fontsize=14,
+        labelloc="t",
+        label="npu-transcribe 推理流水线（当前状态）\n实线 = 主数据流；虚线 = 可选/按需；点线 = 观测旁路\nauto 语言：每个文件首个片段检测一次；\n检测与转写各自重算 log-mel 并执行一次编码器",
+        nodesep=0.35,
+        ranksep=0.45,
+        compound=true,
+        bgcolor="white"
+    ];
+    node [
+        fontname="Microsoft YaHei",
+        fontsize=10,
+        shape=box,
+        style="rounded,filled",
+        fillcolor="#eef3f8",
+        color="#5b7c99",
+        penwidth=1.1
+    ];
+    edge [
+        fontname="Microsoft YaHei",
+        fontsize=9,
+        color="#34506b",
+        fontcolor="#243b53",
+        arrowsize=0.8
+    ];
+
+    subgraph cluster_input {
+        label="输入";
+        fontname="Microsoft YaHei";
+        fontsize=11;
+        color="#b8c4ce";
+        style="rounded,dashed";
+        input [shape=folder, fillcolor="#f7f2e7", color="#8a7350",
+               label="音频文件\nWAV / MP3 / M4A / FLAC / WMA / MP4·MOV"];
+    }
+
+    subgraph cluster_frontend {
+        label="CPU · 音频前端（nput_core，CLI 编排）";
+        fontname="Microsoft YaHei";
+        fontsize=11;
+        color="#9fb3c8";
+        style="rounded";
+        load [label="nput_audio_load\n按扩展名分发"];
+        wav [label="WAV 解析\n8/16/24/32-bit PCM\n32/64-bit float"];
+        mf [label="Media Foundation\n系统解码器 → 16-bit PCM", style="rounded,filled,dashed"];
+        resample [label="重采样\n窗函数 sinc → 16 kHz 单声道"];
+        segment [label="能量分段\n静音处切分，片段 ≤30 s"];
+    }
+
+    subgraph cluster_features {
+        label="CPU · 特征提取";
+        fontname="Microsoft YaHei";
+        fontsize=11;
+        color="#9fb3c8";
+        style="rounded";
+        mel [label="nput_mel_compute\n裁剪/补零到 30 s\nlog-mel 80 × 3000", fillcolor="#e8eef7"];
+    }
+
+    subgraph cluster_npu {
+        label="NPU · 编码器（OpenVINO 静态形状）";
+        fontname="Microsoft YaHei";
+        fontsize=11;
+        color="#4f7a4f";
+        style="rounded";
+        encoder [label="编码器推理\n输入 input_features 1×80×3000\n输出 last_hidden_state 1×1500×d_model",
+                 fillcolor="#e8f2e8", color="#4f7a4f"];
+    }
+
+    subgraph cluster_decoder {
+        label="CPU · 解码器（自回归，KV 缓存为动态形状）";
+        fontname="Microsoft YaHei";
+        fontsize=11;
+        color="#8a7350";
+        style="rounded";
+        detect [label="语言检测（可选）\nSOT → 语言 token\n仅解码一步", style="rounded,filled,dashed", fillcolor="#fbf1dc"];
+        decode [label="贪心解码循环\nSOT → 语言 → transcribe → no_timestamps\n逐 token argmax + 3-gram 抑制\n上限 max_tokens（默认 224）", fillcolor="#fbf1dc"];
+        tokenizer [label="字节级 BPE 解码\nvocab.json → UTF-8"];
+    }
+
+    subgraph cluster_output {
+        label="输出";
+        fontname="Microsoft YaHei";
+        fontsize=11;
+        color="#b8c4ce";
+        style="rounded,dashed";
+        trim [label="去首尾空白"];
+        format [label="格式化\ntxt / srt / json"];
+        output [shape=folder, fillcolor="#f7f2e7", color="#8a7350",
+                label="stdout 或输出文件\nSRT 时间轴按片段起止对齐"];
+    }
+
+    subgraph cluster_stores {
+        label="模型与缓存（文件）";
+        fontname="Microsoft YaHei";
+        fontsize=11;
+        color="#a68b3c";
+        style="rounded,dashed";
+        models [shape=cylinder, fillcolor="#fff8e1", color="#a68b3c",
+                label="Whisper IR 目录\nencoder/decoder XML+BIN\nvocab.json"];
+        cache [shape=cylinder, fillcolor="#fff8e1", color="#a68b3c",
+               label="OpenVINO 编译缓存\n（--cache-dir）"];
+    }
+
+    timing [shape=note, fillcolor="#f4f4f4", color="#8c8c8c",
+            label="计时旁路（--verbose → stderr）\nencoder_ms / decoder_ms / tokens"];
+
+    input -> load [label="路径"];
+    load -> wav [label=".wav / .wave"];
+    load -> mf [label="其它扩展名（仅 Windows）", style=dashed];
+    wav -> resample [label="float 单声道\n原始采样率"];
+    mf -> resample [label="16-bit PCM\n原始采样率"];
+    resample -> segment [label="16 kHz float\n[-1, 1]"];
+    segment -> mel [label="≤480000 采样点"];
+    mel -> encoder [label="float32 [1, 80, 3000]"];
+    encoder -> decode [label="last_hidden_state\n[1, 1500, d_model]"];
+    mel -> detect [label="重新计算特征", style=dashed, color="#a68b3c", fontcolor="#7a6428"];
+    encoder -> detect [label="重新执行编码器", style=dashed, color="#a68b3c", fontcolor="#7a6428"];
+    detect -> decode [label="language_token\n（该文件后续片段复用）", style=dashed, color="#a68b3c", fontcolor="#7a6428"];
+    decode -> tokenizer [label="token ids"];
+    tokenizer -> trim [label="UTF-8 文本"];
+    trim -> format;
+    format -> output;
+    models -> encoder [label="encoder IR", style=dashed, color="#a68b3c", fontcolor="#7a6428"];
+    models -> decode [label="decoder IR", style=dashed, color="#a68b3c", fontcolor="#7a6428"];
+    cache -> encoder [style=dotted, color="#a68b3c"];
+    encoder -> timing [style=dotted, arrowhead=none, color="#8c8c8c"];
+    decode -> timing [style=dotted, arrowhead=none, color="#8c8c8c"];
+}

@@ -40,6 +40,42 @@ static size_t build_wav(unsigned char *buffer, uint16_t channels, uint16_t bits,
     return 44 + data_size;
 }
 
+/* 写入带 WAVE_FORMAT_EXTENSIBLE fmt 块的最小 RIFF/WAVE 文件。 */
+static size_t build_wav_extensible(unsigned char *buffer, uint16_t channels, uint16_t bits,
+                                   uint32_t rate, const unsigned char *data, uint32_t data_size,
+                                   uint16_t subtype) {
+    const uint16_t block_align = (uint16_t)(channels * bits / 8u);
+    memcpy(buffer, "RIFF", 4);
+    put_u32(buffer + 4, 60 + data_size);
+    memcpy(buffer + 8, "WAVE", 4);
+    memcpy(buffer + 12, "fmt ", 4);
+    put_u32(buffer + 16, 40);
+    put_u16(buffer + 20, 0xFFFE);
+    put_u16(buffer + 22, channels);
+    put_u32(buffer + 24, rate);
+    put_u32(buffer + 28, rate * block_align);
+    put_u16(buffer + 32, block_align);
+    put_u16(buffer + 34, bits);
+    put_u16(buffer + 36, 22);   /* cbSize */
+    put_u16(buffer + 38, bits); /* valid bits */
+    put_u32(buffer + 40, 0);    /* channel mask */
+    put_u32(buffer + 44, subtype);
+    put_u16(buffer + 48, 0x0000);
+    put_u16(buffer + 50, 0x0010);
+    buffer[52] = 0x80;
+    buffer[53] = 0x00;
+    buffer[54] = 0x00;
+    buffer[55] = 0xAA;
+    buffer[56] = 0x00;
+    buffer[57] = 0x38;
+    buffer[58] = 0x9B;
+    buffer[59] = 0x71;
+    memcpy(buffer + 60, "data", 4);
+    put_u32(buffer + 64, data_size);
+    memcpy(buffer + 68, data, data_size);
+    return 68 + data_size;
+}
+
 static nput_audio load_from(unsigned char *bytes, size_t size) {
     const char *path = "nput_test_tmp.wav";
     FILE *file = fopen(path, "wb");
@@ -229,12 +265,87 @@ static void test_wav_rejects_truncated_data(void) {
     TEST_ASSERT_EQUAL_size_t(0, audio.count);
 }
 
+static void test_wav_pcm8_mono(void) {
+    unsigned char data[4] = {128, 0, 192, 255};
+
+    unsigned char wav[128];
+    const size_t size = build_wav(wav, 1, 8, 16000, data, sizeof(data), 1);
+    nput_audio audio = load_from(wav, size);
+
+    TEST_ASSERT_EQUAL_size_t(4, audio.count);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.0f, audio.samples[0]);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, -1.0f, audio.samples[1]);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.5f, audio.samples[2]);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 127.0f / 128.0f, audio.samples[3]);
+    nput_audio_free(&audio);
+}
+
+static void test_wav_pcm32_mono(void) {
+    unsigned char data[8];
+    put_u32(data + 0, 0x40000000u); /* 半量程 */
+    put_u32(data + 4, 0xC0000000u); /* -1073741824 */
+
+    unsigned char wav[128];
+    const size_t size = build_wav(wav, 1, 32, 16000, data, sizeof(data), 1);
+    nput_audio audio = load_from(wav, size);
+
+    TEST_ASSERT_EQUAL_size_t(2, audio.count);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.5f, audio.samples[0]);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, -0.5f, audio.samples[1]);
+    nput_audio_free(&audio);
+}
+
+static void test_wav_float64_mono(void) {
+    unsigned char data[8];
+    const double value = 0.25;
+    memcpy(data, &value, sizeof(value));
+
+    unsigned char wav[128];
+    const size_t size = build_wav(wav, 1, 64, 16000, data, sizeof(data), 3);
+    nput_audio audio = load_from(wav, size);
+
+    TEST_ASSERT_EQUAL_size_t(1, audio.count);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.25f, audio.samples[0]);
+    nput_audio_free(&audio);
+}
+
+static void test_wav_extensible_pcm16_mono(void) {
+    unsigned char data[2];
+    put_u16(data, 16384);
+
+    unsigned char wav[128];
+    const size_t size = build_wav_extensible(wav, 1, 16, 16000, data, sizeof(data), 1);
+    nput_audio audio = load_from(wav, size);
+
+    TEST_ASSERT_EQUAL_size_t(1, audio.count);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.5f, audio.samples[0]);
+    nput_audio_free(&audio);
+}
+
+static void test_wav_zero_length_data(void) {
+    unsigned char data[1] = {0};
+
+    unsigned char wav[128];
+    const size_t size = build_wav(wav, 1, 16, 16000, data, 0, 1);
+    nput_audio audio = load_from(wav, size);
+
+    TEST_ASSERT_EQUAL_INT(16000, audio.sample_rate);
+    TEST_ASSERT_EQUAL_size_t(0, audio.count);
+    TEST_ASSERT_NULL(audio.samples);
+    nput_audio_free(&audio);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_wav_pcm16_mono);
     RUN_TEST(test_wav_pcm16_stereo_is_averaged);
     RUN_TEST(test_wav_pcm24_mono);
+    RUN_TEST(test_wav_pcm8_mono);
+    RUN_TEST(test_wav_pcm32_mono);
     RUN_TEST(test_wav_float32_mono);
+    RUN_TEST(test_wav_float64_mono);
+    RUN_TEST(test_wav_extensible_pcm16_mono);
+    RUN_TEST(test_wav_zero_length_data);
     RUN_TEST(test_wav_rejects_garbage);
     RUN_TEST(test_wav_rejects_short_fmt);
     RUN_TEST(test_wav_skips_odd_chunk_padding);

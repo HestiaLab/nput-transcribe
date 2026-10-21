@@ -78,17 +78,16 @@ static void build_windows(float *hann, float *cos_table, float *sin_table) {
     }
 }
 
-/* 与 torch.stft(center=True, pad_mode="reflect") 一致的反射填充。
-   越界索引补零，只会在输入短于半个窗长时发生。 */
-static void reflect_pad(const float *samples, size_t count, float *padded) {
-    for (size_t i = 0; i < (size_t)NPUT_MEL_PAD; ++i) {
-        const size_t index = (size_t)NPUT_MEL_PAD - i;
-        padded[i] = index < count ? samples[index] : 0.0f;
+/* 与 torch.stft(center=True, pad_mode="reflect") 一致：先把音频补零到
+   30 秒，再对 30 秒缓冲区做半个窗长的反射填充。 */
+static void reflect_pad_30s(float *padded) {
+    const size_t base = (size_t)NPUT_MEL_PAD;
+    for (size_t i = 0; i < base; ++i) {
+        padded[i] = padded[base + base - i];
     }
-    memcpy(padded + NPUT_MEL_PAD, samples, count * sizeof(float));
-    for (size_t i = 0; i < (size_t)NPUT_MEL_PAD; ++i) {
-        const long long index = (long long)count - 2 - (long long)i;
-        padded[NPUT_MEL_PAD + count + i] = index >= 0 ? samples[index] : 0.0f;
+    for (size_t i = 0; i < base; ++i) {
+        padded[base + (size_t)NPUT_MEL_SAMPLES + i] =
+            padded[base + (size_t)NPUT_MEL_SAMPLES - 2 - i];
     }
 }
 
@@ -123,7 +122,8 @@ nput_status nput_mel_compute(const float *samples, size_t count, nput_mel *out) 
     }
 
     const size_t usable = count > (size_t)NPUT_MEL_SAMPLES ? (size_t)NPUT_MEL_SAMPLES : count;
-    reflect_pad(samples, usable, padded);
+    memcpy(padded + NPUT_MEL_PAD, samples, usable * sizeof(float));
+    reflect_pad_30s(padded);
     build_filter_bank(filter_bank);
     build_windows(hann, cos_table, sin_table);
 
