@@ -3,6 +3,16 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [未发布]
+
+### 变更
+
+- 构建：GCC 与 Clang 默认以 `-Werror` 编译；新增 `NPUT_ENABLE_UBSAN`，
+  CI 的 Linux Debug 任务同时开启 ASan 与 UBSan。
+- CI：新增 `clang-tidy` 任务，扫描 `src/`，出现诊断即失败。
+- `cli_json_escape` 的 UTF-8 长度判断改为显式携带剩余长度，`nput_asr_devices` 不再使用
+  `strcat`，`nput_tokenizer_load` 用带返回检查的 `fseek` 替代 `rewind`；均无行为变化。
+
 ## [0.3.1] - 2026-10-20
 
 ### 修复
