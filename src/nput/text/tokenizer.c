@@ -118,7 +118,7 @@ static const char *parse_json_string(const char *cursor, const char *end, int32_
                 case '"':
                 case '\\':
                 case '/':
-                    value = escape;
+                    value = (int32_t)(unsigned char)escape;
                     break;
                 case 'b':
                     value = '\b';
@@ -236,7 +236,10 @@ nput_status nput_tokenizer_load(const char *vocab_json_path, nput_tokenizer **ou
         fclose(file);
         return NPUT_ERR_FORMAT;
     }
-    rewind(file);
+    if (fseek(file, 0, SEEK_SET) != 0) {
+        fclose(file);
+        return NPUT_ERR_IO;
+    }
     char *document = (char *)malloc((size_t)file_size + 1);
     if (document == NULL) {
         fclose(file);

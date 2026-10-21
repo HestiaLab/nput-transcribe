@@ -32,13 +32,16 @@ nput_status nput_asr_devices(char **out_csv) {
         ov_core_free(core);
         return NPUT_ERR_OUT_OF_MEMORY;
     }
-    csv[0] = '\0';
+    size_t offset = 0;
     for (size_t i = 0; i < devices.size; ++i) {
         if (i > 0) {
-            strcat(csv, ",");
+            csv[offset++] = ',';
         }
-        strcat(csv, devices.devices[i]);
+        const size_t device_length = strlen(devices.devices[i]);
+        memcpy(csv + offset, devices.devices[i], device_length);
+        offset += device_length;
     }
+    csv[offset] = '\0';
 
     ov_available_devices_free(&devices);
     ov_core_free(core);

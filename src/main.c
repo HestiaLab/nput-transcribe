@@ -23,19 +23,6 @@
 #include <shellapi.h>
 #endif
 
-typedef struct cli_options {
-    const char *model_dir;
-    const char *vocab_path;
-    const char *encoder_device;
-    const char *decoder_device;
-    const char *cache_dir;
-    const char *language;
-    const char *output;
-    output_format format;
-    int32_t max_tokens;
-    int verbose;
-} cli_options;
-
 #if defined(_WIN32)
 /* Windows CRT 按 ANSI 代码页生成 argv/getenv，库则要求 UTF-8 路径，
  * 因此在 CLI 边界统一转换，库内部的 UTF-8 契约保持不变。 */
@@ -140,40 +127,20 @@ static void print_error_detail(void) {
     }
 }
 
+/* 解析结果到 CLI 状态的桥接：立即退出的动作在这里执行，保持原有的退出语义。 */
 static int parse_arguments(int argc, char **argv, cli_options *options, const char ***files,
                            size_t *file_count) {
-    static const char *positional[256];
-    size_t positional_count = 0;
-    int options_ended = 0;
+    static cli_arguments arguments;
+    cli_parse_arguments(argc, argv, &arguments);
 
-    for (int i = 1; i < argc; ++i) {
-        const char *argument = argv[i];
-        const char *value = NULL;
-        const int has_next = i + 1 < argc;
-
-        if (!options_ended && strcmp(argument, "--") == 0) {
-            options_ended = 1;
-            continue;
-        }
-        if (options_ended) {
-            if (positional_count == sizeof(positional) / sizeof(positional[0])) {
-                fprintf(stderr, "错误：输入文件过多（最多 %zu 个）\n",
-                        sizeof(positional) / sizeof(positional[0]));
-                return 0;
-            }
-            positional[positional_count++] = argument;
-            continue;
-        }
-
-        if (strcmp(argument, "-h") == 0 || strcmp(argument, "--help") == 0) {
+    switch (arguments.action) {
+        case CLI_ACTION_HELP:
             print_usage(stdout);
             exit(0);
-        }
-        if (strcmp(argument, "--version") == 0) {
+        case CLI_ACTION_VERSION:
             printf("nput-transcribe %s\n", NPUT_VERSION);
             exit(0);
-        }
-        if (strcmp(argument, "--list-devices") == 0) {
+        case CLI_ACTION_LIST_DEVICES: {
             char *devices = NULL;
             if (nput_asr_devices(&devices) != NPUT_OK) {
                 fprintf(stderr, "错误：无法查询 OpenVINO 设备\n");
@@ -183,12 +150,11 @@ static int parse_arguments(int argc, char **argv, cli_options *options, const ch
             nput_free(devices);
             exit(0);
         }
-        if (strcmp(argument, "--list-models") == 0) {
+        case CLI_ACTION_LIST_MODELS: {
             char *env_model_dir = read_env_utf8("NPUT_MODEL_DIR");
             char *lines = NULL;
             const nput_status listed = nput_list_model_dirs(&lines);
-            if (listed != NPUT_OK &&
-                !(listed == NPUT_ERR_UNSUPPORTED && env_model_dir != NULL)) {
+            if (listed != NPUT_OK && !(listed == NPUT_ERR_UNSUPPORTED && env_model_dir != NULL)) {
                 fprintf(stderr, "错误：未找到模型目录\n");
                 free(env_model_dir);
                 exit(1);
@@ -208,121 +174,16 @@ static int parse_arguments(int argc, char **argv, cli_options *options, const ch
             nput_free(lines);
             exit(0);
         }
-        if (strcmp(argument, "-v") == 0 || strcmp(argument, "--verbose") == 0) {
-            options->verbose = 1;
-            continue;
-        }
-
-        if (strncmp(argument, "--", 2) == 0) {
-            if (strchr(argument, '=') != NULL) {
-                fprintf(stderr, "错误：%s 的取值需单独传入（不支持 = 形式）\n", argument);
-                return 0;
-            }
-        }
-
-        if (strcmp(argument, "-m") == 0 || strcmp(argument, "--model") == 0) {
-            if (!has_next) {
-                fprintf(stderr, "错误：%s 需要一个值\n", argument);
-                return 0;
-            }
-            options->model_dir = argv[++i];
-            continue;
-        }
-        if (strcmp(argument, "--vocab") == 0) {
-            if (!has_next) {
-                fprintf(stderr, "错误：%s 需要一个值\n", argument);
-                return 0;
-            }
-            options->vocab_path = argv[++i];
-            continue;
-        }
-        if (strcmp(argument, "--encoder-device") == 0) {
-            if (!has_next) {
-                fprintf(stderr, "错误：%s 需要一个值\n", argument);
-                return 0;
-            }
-            options->encoder_device = argv[++i];
-            continue;
-        }
-        if (strcmp(argument, "--decoder-device") == 0) {
-            if (!has_next) {
-                fprintf(stderr, "错误：%s 需要一个值\n", argument);
-                return 0;
-            }
-            options->decoder_device = argv[++i];
-            continue;
-        }
-        if (strcmp(argument, "--cache-dir") == 0) {
-            if (!has_next) {
-                fprintf(stderr, "错误：%s 需要一个值\n", argument);
-                return 0;
-            }
-            options->cache_dir = argv[++i];
-            continue;
-        }
-        if (strcmp(argument, "-l") == 0 || strcmp(argument, "--language") == 0) {
-            if (!has_next) {
-                fprintf(stderr, "错误：%s 需要一个值\n", argument);
-                return 0;
-            }
-            options->language = argv[++i];
-            continue;
-        }
-        if (strcmp(argument, "-o") == 0 || strcmp(argument, "--output") == 0) {
-            if (!has_next) {
-                fprintf(stderr, "错误：%s 需要一个值\n", argument);
-                return 0;
-            }
-            options->output = argv[++i];
-            continue;
-        }
-        if (strcmp(argument, "-f") == 0 || strcmp(argument, "--format") == 0) {
-            if (!has_next) {
-                fprintf(stderr, "错误：%s 需要一个值\n", argument);
-                return 0;
-            }
-            value = argv[++i];
-            if (strcmp(value, "txt") == 0) {
-                options->format = FORMAT_TXT;
-            } else if (strcmp(value, "srt") == 0) {
-                options->format = FORMAT_SRT;
-            } else if (strcmp(value, "json") == 0) {
-                options->format = FORMAT_JSON;
-            } else {
-                fprintf(stderr, "错误：未知格式 '%s'\n", value);
-                return 0;
-            }
-            continue;
-        }
-        if (strcmp(argument, "--max-tokens") == 0) {
-            if (!has_next) {
-                fprintf(stderr, "错误：%s 需要一个值\n", argument);
-                return 0;
-            }
-            if (!cli_parse_int(argv[++i], &options->max_tokens)) {
-                fprintf(stderr, "错误：--max-tokens 需要 1 到 %ld 之间的整数\n", (long)INT32_MAX);
-                return 0;
-            }
-            continue;
-        }
-        if (argument[0] == '-' && argument[1] != '\0') {
-            fprintf(stderr, "错误：未知选项 '%s'\n", argument);
+        case CLI_ACTION_ERROR:
+            fprintf(stderr, "%s\n", arguments.error);
             return 0;
-        }
-        if (positional_count == sizeof(positional) / sizeof(positional[0])) {
-            fprintf(stderr, "错误：输入文件过多（最多 %zu 个）\n",
-                    sizeof(positional) / sizeof(positional[0]));
-            return 0;
-        }
-        positional[positional_count++] = argument;
+        case CLI_ACTION_RUN:
+            break;
     }
 
-    if (positional_count == 0) {
-        fprintf(stderr, "错误：未指定输入文件\n");
-        return 0;
-    }
-    *files = positional;
-    *file_count = positional_count;
+    *options = arguments.options;
+    *files = arguments.files;
+    *file_count = arguments.file_count;
     return 1;
 }
 

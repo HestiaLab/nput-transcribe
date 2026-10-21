@@ -1,5 +1,5 @@
 #if !defined(_WIN32) && !defined(_XOPEN_SOURCE)
-#define _XOPEN_SOURCE 700
+#define _XOPEN_SOURCE 700  // NOLINT(bugprone-reserved-identifier)：POSIX 特性测试宏
 #endif
 
 #include "audio/decode.h"
@@ -73,6 +73,9 @@ static float to_float(const unsigned char *p, uint16_t bits, uint16_t tag) {
 
 static nput_status append_samples(float **samples, size_t *count, size_t *capacity, const float *src,
                                   size_t src_count) {
+    if (src_count == 0) {
+        return NPUT_OK;
+    }
     if (*count + src_count > *capacity) {
         size_t wanted = *capacity == 0 ? 65536 : *capacity;
         while (wanted < *count + src_count) {

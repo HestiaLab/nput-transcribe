@@ -57,7 +57,7 @@ ctest --preset debug
 分支命名：
 
 ```text
-feat/<主题>    fix/<主题>    docs/<主题>
+feat/<主题>    fix/<主题>    docs/<主题>    refactor/<主题>
 ```
 
 提交信息使用 Conventional Commits：
@@ -74,7 +74,7 @@ feat/<主题>    fix/<主题>    docs/<主题>
 ## Pull Request
 
 - [ ] 说明目标与验收命令，附实际输出。
-- [ ] GitHub Actions 的 CI 通过（Windows MinGW GCC、Linux GCC / Clang、ASan）。
+- [ ] GitHub Actions 的 CI 通过（Windows MinGW GCC、Linux GCC / Clang、ASan/UBSan、clang-tidy）。
 - [ ] `ctest --preset debug` 全部通过；改推理路径时附真实音频的 `-v` 结果。
 - [ ] 公开接口只放在 `include/nput/`，实现细节留在 `src/`。
 - [ ] 设备相关的 `#ifdef` 收敛在 `src/nput/platform/platform.c` 与
@@ -84,6 +84,46 @@ feat/<主题>    fix/<主题>    docs/<主题>
 - [ ] 新增或修改后端时，桩测试覆盖选择、转写、语言检测与错误路径。
 - [ ] 面向用户的变更同步更新 `README.md` 与 `CHANGELOG.md`。
 - [ ] 不包含无关改动、调试输出或临时文件。
+
+## 质量门禁
+
+GCC 与 Clang 默认以 `-Werror` 编译，`-Wall -Wextra -Wpedantic -Wshadow` 的告警必须清零。
+提交前执行：
+
+```powershell
+cmake --preset debug;   cmake --build --preset debug;   ctest --preset debug
+cmake --preset release; cmake --build --preset release; ctest --preset release
+clang-tidy -p build/debug --quiet --warnings-as-errors='*' `
+    (Get-ChildItem src -Recurse -Filter *.c | ForEach-Object FullName)
+```
+
+- `clang-tidy` 只扫 `src/`（`include/nput/` 的公共头经 `#include` 一并检查），不扫 `tests/`；
+  CI 在 Linux 上执行，有诊断即失败。
+- 告警必须修复。确属误报时用 `// NOLINT(检查名) // 理由` 定点豁免并写明为什么安全；
+  放宽 `.clang-tidy` 的检查集不算修复。
+- `-DNPUT_ENABLE_ASAN=ON` 与 `-DNPUT_ENABLE_UBSAN=ON` 供本地排查。MinGW GCC 不提供
+  UBSan 运行时，Windows 上需改用 `C:/msys64/clang64/bin/clang.exe` 构建；
+  CI 的 Linux Debug 任务同时开启两者。
+
+## 端到端等价性基线
+
+推理路径的结构改动必须证明「输出不变」，而不是「看起来等价」。基线放在仓库外，
+避免把音频与模型快照塞进版本库：
+
+1. 用固定文本合成一段 20–30 s 语音（Windows 可用 `System.Speech`，音色
+   `Microsoft Huihui Desktop`，48 kHz / 16-bit / 立体声），再用 ffmpeg 转一份 MP3，
+   以覆盖 Media Foundation 解码路径。
+2. 记录音频与输出的 SHA256，并注明模型：`whisper-base-int8-ov` 覆盖主干，
+   `whisper-medium-int8-ov` 覆盖 `d_model=1024`。
+3. 改动前后各跑一次：
+
+   ```powershell
+   $exe -m <model> --cache-dir <baseline>\npu-cache -f json -o out.json input.wav
+   ```
+
+4. 判定：JSON 逐字节相同。耗时不作为判据，NPU 首次编译 20–30 s 属正常。
+
+基线只证明前后一致，不证明转写质量；质量回归仍需真实语料。
 
 ## 代码风格
 

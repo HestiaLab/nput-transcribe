@@ -1,6 +1,7 @@
 #include "cli_output.h"
 
 #include <stdio.h>
+#include <string.h>
 
 void cli_format_timestamp(char *buffer, size_t size, double seconds) {
     if (seconds < 0.0) {
@@ -14,44 +15,52 @@ void cli_format_timestamp(char *buffer, size_t size, double seconds) {
     snprintf(buffer, size, "%02d:%02d:%02d,%03d", hours, minutes, secs, millis);
 }
 
-/* 返回合法 UTF-8 序列的长度；非法或截断时返回 0。读取在 NUL 处短路。 */
-static size_t utf8_sequence_length(const unsigned char *text) {
+/* 返回合法 UTF-8 序列的长度；非法、截断或超出 remaining 时返回 0。 */
+static size_t utf8_sequence_length(const unsigned char *text, size_t remaining) {
     const unsigned char first = text[0];
     if (first >= 0xC2 && first <= 0xDF) {
-        return (text[1] & 0xC0) == 0x80 ? 2 : 0;
+        return remaining >= 2 && (text[1] & 0xC0) == 0x80 ? 2 : 0;
     }
     if (first == 0xE0) {
-        return text[1] >= 0xA0 && text[1] <= 0xBF && (text[2] & 0xC0) == 0x80 ? 3 : 0;
+        return remaining >= 3 && text[1] >= 0xA0 && text[1] <= 0xBF &&
+                       (text[2] & 0xC0) == 0x80
+                   ? 3
+                   : 0;
     }
     if (first >= 0xE1 && first <= 0xEC) {
-        return (text[1] & 0xC0) == 0x80 && (text[2] & 0xC0) == 0x80 ? 3 : 0;
+        return remaining >= 3 && (text[1] & 0xC0) == 0x80 && (text[2] & 0xC0) == 0x80 ? 3 : 0;
     }
     if (first == 0xED) {
-        return text[1] >= 0x80 && text[1] <= 0x9F && (text[2] & 0xC0) == 0x80 ? 3 : 0;
+        return remaining >= 3 && text[1] >= 0x80 && text[1] <= 0x9F &&
+                       (text[2] & 0xC0) == 0x80
+                   ? 3
+                   : 0;
     }
     if (first >= 0xEE && first <= 0xEF) {
-        return (text[1] & 0xC0) == 0x80 && (text[2] & 0xC0) == 0x80 ? 3 : 0;
+        return remaining >= 3 && (text[1] & 0xC0) == 0x80 && (text[2] & 0xC0) == 0x80 ? 3 : 0;
     }
     if (first == 0xF0) {
-        const int ok = text[1] >= 0x90 && text[1] <= 0xBF && (text[2] & 0xC0) == 0x80 &&
-                       (text[3] & 0xC0) == 0x80;
+        const int ok = remaining >= 4 && text[1] >= 0x90 && text[1] <= 0xBF &&
+                       (text[2] & 0xC0) == 0x80 && (text[3] & 0xC0) == 0x80;
         return ok ? 4 : 0;
     }
     if (first >= 0xF1 && first <= 0xF3) {
-        const int ok = (text[1] & 0xC0) == 0x80 && (text[2] & 0xC0) == 0x80 &&
+        const int ok = remaining >= 4 && (text[1] & 0xC0) == 0x80 && (text[2] & 0xC0) == 0x80 &&
                        (text[3] & 0xC0) == 0x80;
         return ok ? 4 : 0;
     }
     if (first == 0xF4) {
-        const int ok = text[1] >= 0x80 && text[1] <= 0x8F && (text[2] & 0xC0) == 0x80 &&
-                       (text[3] & 0xC0) == 0x80;
+        const int ok = remaining >= 4 && text[1] >= 0x80 && text[1] <= 0x8F &&
+                       (text[2] & 0xC0) == 0x80 && (text[3] & 0xC0) == 0x80;
         return ok ? 4 : 0;
     }
     return 0;
 }
 
 void cli_json_escape(FILE *stream, const char *text) {
-    for (const unsigned char *cursor = (const unsigned char *)text; *cursor != '\0'; ++cursor) {
+    const size_t total = strlen(text);
+    for (size_t index = 0; index < total; ++index) {
+        const unsigned char *cursor = (const unsigned char *)text + index;
         switch (*cursor) {
             case '"':
                 fputs("\\\"", stream);
@@ -74,12 +83,12 @@ void cli_json_escape(FILE *stream, const char *text) {
                 } else if (*cursor < 0x80) {
                     fputc(*cursor, stream);
                 } else {
-                    const size_t length = utf8_sequence_length(cursor);
+                    const size_t length = utf8_sequence_length(cursor, total - index);
                     if (length == 0) {
                         fputs("\xEF\xBF\xBD", stream);
                     } else {
                         fwrite(cursor, 1, length, stream);
-                        cursor += length - 1;
+                        index += length - 1;
                     }
                 }
                 break;
