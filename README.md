@@ -1,11 +1,18 @@
 # nput-transcribe
 
-[![CI](https://github.com/HestiaLab/nput-transcribe/actions/workflows/ci.yml/badge.svg)](https://github.com/HestiaLab/nput-transcribe/actions/workflows/ci.yml)
+Whisper transcription CLI (C11): encoder on Intel NPU, decoder on CPU.
 
-Whisper 语音转写命令行工具（C11）：**编码器跑在 Intel NPU，解码器留在 CPU**。
-ASR 层按模型后端组织，Whisper 是当前默认后端。
-输入 WAV，以及系统解码器支持的压缩音频（Windows：MP3、M4A/AAC、FLAC、WMA，以及
-带音轨的 MP4/MOV 等容器）。
+Whisper 语音转写命令行工具（C11）：**编码器跑在 Intel NPU，解码器留在 CPU**。ASR 层按模型后端组织，Whisper 是当前默认后端。输入 WAV，以及系统解码器支持的压缩音频（Windows：MP3、M4A/AAC、FLAC、WMA，以及带音轨的 MP4/MOV 等容器）。
+
+**状态**：v0.3.1 · Windows x64 · MIT · 需 OpenVINO 运行时 + Intel NPU（真实转写未在本机验证）
+
+[![CI](https://github.com/HestiaLab/nput-transcribe/actions/workflows/ci.yml/badge.svg)](https://github.com/HestiaLab/nput-transcribe/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/HestiaLab/nput-transcribe)](https://github.com/HestiaLab/nput-transcribe/releases/tag/v0.3.1)
+[![License](https://img.shields.io/github/license/HestiaLab/nput-transcribe)](LICENSE)
+
+[下载 v0.3.1](https://github.com/HestiaLab/nput-transcribe/releases/tag/v0.3.1) · [变更日志](CHANGELOG.md) · [贡献](CONTRIBUTING.md) · [安全](SECURITY.md)
+
+> **运行门槛**：Windows 10/11 + MSYS2 UCRT64 GCC · OpenVINO 运行时（约 217 MB DLL）· Intel NPU（编码器静态形状 1×80×3000）· 外部 Whisper IR 模型；无 NPU 时可用 `--encoder-device` 改为 `GPU` 或 `CPU`。真实转写与性能数字本轮未复现。
 
 ```text
 nput-transcribe --model <whisper-ir-dir> -f srt -o meeting.srt meeting.mp3
@@ -36,6 +43,20 @@ OpenVINO 运行时按 `OPENVINO_ROOT` → 环境变量 → `pip install openvino
 模型目录需包含 `openvino_encoder_model.xml/.bin`、`openvino_decoder_model.xml/.bin`
 与 `vocab.json`。不传 `--model` 时按 `NPUT_MODEL_DIR` → `./models` → Hugging Face 缓存
 的顺序查找，多个候选取最新快照，并在 stderr 打印实际使用的目录。
+
+本机实测（Windows 11 · OpenVINO 2026.4.1 · Intel AI Boost NPU · Debug 构建）：
+
+```console
+$ ./build/debug/bin/nput-transcribe.exe --version
+nput-transcribe 0.3.1
+$ ./build/debug/bin/nput-transcribe.exe --list-devices
+CPU,GPU,NPU
+$ ctest --preset debug --output-on-failure
+100% tests passed, 0 tests failed out of 13
+```
+
+本机检测到 OpenVINO 与 NPU，但本轮**未运行真实转写**；`--list-models` 会回显本机
+HuggingFace 绝对路径，故不放入 README。
 
 支持的模型规模：`base`（d_model 512）、`small`（768）、`medium`（1024）使用相同的
 80 维 mel 输入；`large-v3` 需要 128 维 mel，当前实现不支持。音乐、演唱与强伴奏场景
@@ -112,6 +133,8 @@ CLI 目前不暴露 `--backend`，参数与输出格式保持不变。新增后�
 成功不会自动清空，需要时调用 `nput_clear_error()`。
 
 ## 性能实测
+
+> 以下为仓库既有实测记录；本轮未运行真实转写，数字未复现；原记录未包含 CPU/NPU 型号与 OpenVINO 版本。
 
 Release 构建，whisper-base int8，NPU 编码器：
 
